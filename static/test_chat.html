@@ -7,13 +7,13 @@
     <body style="font-family: sans-serif; padding: 20px">
         <h2>آزمایش چت بلادرنگ</h2>
         <div>
-            <input id="token" type="text" placeholder="توکن JWT کاربر" style="width: 300px;">
+            <label for="token"></label><input id="token" type="text" placeholder="توکن JWT کاربر" style="width: 300px;">
             <button onClick="connectWS()">اتصال به چت</button>
         </div>
         <br>
         <div>
-            <input id="receiver_id" type="number" placeholder="شناسه دریافت کننده">
-            <input id="message" type="text" placeholder="متن پیام">
+            <label for="receiver_id"></label><input id="receiver_id" type="number" placeholder="شناسه دریافت کننده">
+            <label for="message"></label><input id="message" type="text" placeholder="متن پیام">
             <button onClick="sendMessage()">ارسال</button>
         </div>
         <h3>
