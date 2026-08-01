@@ -1,3 +1,5 @@
+from typing import List
+
 from fastapi import APIRouter, Depends
 from fastapi.security import OAuth2PasswordRequestForm
 from sqlalchemy import select
@@ -9,6 +11,12 @@ from app.models import User
 from app.schemas import UserResponse, UserCreate, Token
 
 router = APIRouter(prefix="/api/auth", tags=["Auth"])
+
+
+@router.get("/users", response_model=List[UserResponse])
+async def get_all_users(db: AsyncSession = Depends(get_db)):
+    users = await db.execute(select(User))
+    return users.scalars().all()
 
 
 @router.post("/register", response_model=UserResponse)
