@@ -1,10 +1,13 @@
+import os
+
 import json
 from typing import List
 
-from fastapi import Query, status, WebSocket, WebSocketDisconnect, APIRouter, Depends
+from fastapi import Query, status, WebSocket, WebSocketDisconnect, APIRouter, Depends, UploadFile, File, HTTPException
 from jose import jwt, JWTError
 from sqlalchemy import or_
 from sqlalchemy.ext.asyncio import AsyncSession
+import shutil
 
 from app.auth import SECRET_KEY, ALGORITHM
 from app.connection_manager import manager
@@ -79,3 +82,22 @@ async def websocket_chat(websocket: WebSocket, token: str = Query(...)):
 
     except WebSocketDisconnect:
         manager.disconnect(user_id)
+
+
+UPLOAD_DIR = "uploads"
+os.makedirs(UPLOAD_DIR, exist_ok=True)
+
+@router.post("/api/upload")
+async def upload_file(file: UploadFile = File(...)):
+    allowed_types = ["image/jpeg", "image/png", "video/mp4", "audio/mpeg", "audio/webm", "audio/ogg"]
+    if file.content_type not in allowed_types:
+        raise HTTPException(status_code=400, detail="Invalid file type")
+
+    file_extension = file.filename.split(".")[-1]
+    unique_filename = f"{uuid.uuid4()}.{file_extension}"
+    file_path = os.path.join(UPLOAD_DIR, unique_filename)
+
+    with open(file_path, "wb") as buffer:
+        shutil.copyfileobj(file.file, buffer)
+
+    return {"file_url": f"/uploads/{unique_filename}", "type": file.content_type}

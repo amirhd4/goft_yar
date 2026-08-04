@@ -17,6 +17,7 @@ export const useWebSocket = () => {
                 sender_id: data.sender_id,
                 receiver_id: data.receiver_id,
                 content: data.content,
+                message_type: data?.type,
                 timestamp: data.timestamp
             });
         };
@@ -30,9 +31,9 @@ export const useWebSocket = () => {
         };
     }, [token]);
 
-    const sendMessage = (receiver_id: number, content: string) => {
+    const sendMessage = (receiver_id: number, content: string, msgType: string | null) => {
       if (ws.current && ws.current.readyState === WebSocket.OPEN) {
-        ws.current.send(JSON.stringify({ receiver_id, content }));
+        ws.current.send(JSON.stringify({ receiver_id, content , msgType }));
       }
     };
 

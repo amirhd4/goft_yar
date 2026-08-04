@@ -28,3 +28,4 @@ app.include_router(auth_router.router)
 app.include_router(chat_router.router)
 
 app.mount("/static", StaticFiles(directory="static"), name="static")
+app.mount("/uploads", StaticFiles(directory="uploads"), name="uploads")
