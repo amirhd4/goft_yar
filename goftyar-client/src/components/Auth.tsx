@@ -21,21 +21,20 @@ const Auth = () => {
       if (isLogin) {
         const formData = new URLSearchParams();
         formData.append("username", username);
-        formData.append("password", password)
+        formData.append("password", password);
 
-        const res = await axios.post("http://localhost:5000/api/auth/login", formData, {
+        const res = await axios.post("http://localhost:8000/api/auth/login", formData, {
           headers: { "Content-Type": "application/x-www-form-urlencoded" },
         });
-        setToken(res.data.access_token)
+        setToken(res.data.access_token);
       } else {
-        await axios.post("http://localhost:8000/api/auth/register", { username, password })
+        await axios.post("http://localhost:8000/api/auth/register", { username, password });
         setIsLogin(true);
-        setError("ثبت نام موفقیت آمیز بود. اکنون وارد شوید.")
+        setError("ثبت نام موفقیت آمیز بود. اکنون وارد شوید.");
       }
     } catch (err: any) {
-      setError(err.response?.data?.detial || "خطایی رخ داد!");
+      setError(err.response?.data?.detail || err.response?.data?.detial || "خطایی رخ داد!");
     }
-
   };
 
   return (
@@ -56,6 +55,7 @@ const Auth = () => {
             />
             <input
               type="password"
+              placeholder={t("password") || "رمز عبور"}
               value={password}
               onChange={(e) => setPassword(e.target.value)}
               className="border p-2 rounded focus:outline-none focus:ring-2 focus:ring-blue-500"

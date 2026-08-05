@@ -1,10 +1,12 @@
 from pydantic import BaseModel
 from datetime import datetime
+from typing import Optional
 
 
 class UserCreate(BaseModel):
     username: str
     password: str
+
 
 class UserResponse(BaseModel):
     id: int
@@ -12,7 +14,6 @@ class UserResponse(BaseModel):
 
     class Config:
         from_attributes = True
-
 
 
 class Token(BaseModel):
@@ -25,6 +26,10 @@ class MessageSchema(BaseModel):
     sender_id: int
     receiver_id: int
     content: str
+    message_type: str
+    client_msg_id: Optional[str] = None
+    is_delivered: bool
+    is_read: bool
     timestamp: datetime
 
     class Config:
