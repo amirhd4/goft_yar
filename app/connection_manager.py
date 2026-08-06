@@ -1,4 +1,4 @@
-from typing import Dict
+from typing import Dict, List
 from fastapi import WebSocket
 
 
@@ -20,7 +20,20 @@ class ConnectionManager:
     async def send_to_user(self, receiver_id: int, message: Dict):
         if receiver_id in self.active_connections:
             websocket = self.active_connections[receiver_id]
-            await websocket.send_json(message)
+            try:
+                await websocket.send_json(message)
+            except Exception:
+                self.disconnect(receiver_id)
+
+    async def broadcast(self, message: dict):
+        for user_id, websocket in list(self.active_connections.items()):
+            try:
+                await websocket.send_json(message)
+            except Exception:
+                self.disconnect(user_id)
+
+    def get_online_users(self) -> List[int]:
+        return list(self.active_connections.keys())
 
 
 manager = ConnectionManager()

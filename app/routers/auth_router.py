@@ -1,6 +1,6 @@
 from typing import List
 
-from fastapi import APIRouter, Depends
+from fastapi import APIRouter, Depends, HTTPException
 from fastapi.security import OAuth2PasswordRequestForm
 from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
@@ -23,7 +23,7 @@ async def get_all_users(db: AsyncSession = Depends(get_db)):
 async def register(user_data: UserCreate, db: AsyncSession = Depends(get_db)):
     result = await db.execute(select(User).where(User.username == user_data.username))
     if result.scalars().first():
-        raise HTTPException(status_code=400, detail="This user name already exists")
+        raise HTTPException(status_code=400, detail="This username already exists")
 
     new_user = User(
         username=user_data.username,
