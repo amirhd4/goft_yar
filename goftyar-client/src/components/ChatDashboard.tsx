@@ -4,10 +4,11 @@ import { useChatStore } from "../store/useChatStore.ts";
 import { useWebSocket } from "../hooks/useWebSocket.ts";
 import axios from "axios";
 import { Paperclip, Mic, Send, LogOut } from "lucide-react";
+import LanguageSwitcher from "./LanguageSwitcher";
 
 
 const ChatDashboard = () => {
-    const { t } = useTranslation();
+    const { t, i18n } = useTranslation();
     const {
         token,
         currentUser,
@@ -27,6 +28,8 @@ const ChatDashboard = () => {
     const fileInputRef = useRef<HTMLInputElement>(null);
     const typingTimeoutRef = useRef<any>(null);
     const messagesEndRef = useRef<HTMLDivElement>(null);
+
+    const isRtl = i18n.language === "fa";
 
     const scrollToBottom = () => {
         messagesEndRef.current?.scrollIntoView({ behavior: "smooth" });
@@ -104,14 +107,14 @@ const ChatDashboard = () => {
             const clientMsgId = `msg-${Date.now()}-${Math.random().toString(36).substr(2, 9)}`;
             sendMessage(selectedUser.id, fileUrl, msgType, clientMsgId);
         } catch (err) {
-            console.error("خطا در آپلود فایل", err);
+            console.error("Error uploading file", err);
         }
     };
 
     const renderMessageContent = (msg: any) => {
         switch (msg.message_type) {
             case "image":
-                return <img src={`http://localhost:8000${msg.content}`} alt="تصویر" className="max-w-xs rounded-lg shadow-sm" />;
+                return <img src={`http://localhost:8000${msg.content}`} alt={t("image") || "تصویر"} className="max-w-xs rounded-lg shadow-sm" />;
             case "video":
                 return <video src={`http://localhost:8000${msg.content}`} controls className="max-w-xs rounded-lg shadow-sm" />;
             case "audio":
@@ -124,12 +127,14 @@ const ChatDashboard = () => {
     const renderTicks = (msg: any) => {
         if (msg.sender_id !== currentUser?.id) return null;
 
+        const spaceClass = isRtl ? "mr-1" : "ml-1";
+
         if (msg.is_read) {
-            return <span className="text-blue-500 font-bold ml-1 text-xs" title="خوانده شده">✓✓</span>;
+            return <span className={`text-blue-500 font-bold ${spaceClass} text-xs`} title={t("read_receipt") || "خوانده شده"}>✓✓</span>;
         } else if (msg.is_delivered) {
-            return <span className="text-gray-400 font-bold ml-1 text-xs" title="رسیده به کاربر">✓✓</span>;
+            return <span className={`text-gray-400 font-bold ${spaceClass} text-xs`} title={t("delivered_receipt") || "رسیده به کاربر"}>✓✓</span>;
         } else {
-            return <span className="text-gray-300 font-bold ml-1 text-xs" title="ارسال شده">✓</span>;
+            return <span className={`text-gray-300 font-bold ${spaceClass} text-xs`} title={t("sent_receipt") || "ارسال شده"}>✓</span>;
         }
     };
 
@@ -146,26 +151,33 @@ const ChatDashboard = () => {
         return onlineUsers.includes(userId);
     };
 
+    const getMessageDir = (content: string) => {
+        const rtlChars = /[\u0600-\u06FF\u0750-\u077F\u0FB50-\uFD3F\uFE70-\uFEFC]/;
+        return rtlChars.test(content) ? "rtl" : "ltr";
+    };
+
     return (
-        <div className="flex h-screen bg-gray-100" dir="rtl">
-            {/* Sidebar with Users list */}
-            <div className="w-1/3 bg-white border-l border-gray-200 flex flex-col p-4 overflow-hidden shadow-sm">
-                <div className="flex items-center justify-between mb-6 pb-2 border-b">
-                    <div>
+        <div className="flex h-screen bg-gray-100" dir={isRtl ? "rtl" : "ltr"}>
+            <div className={`w-1/3 bg-white ${isRtl ? "border-l" : "border-r"} border-gray-200 flex flex-col p-4 overflow-hidden shadow-sm`}>
+                <div className="flex items-center justify-between mb-6 pb-2 border-b gap-2">
+                    <div className="min-w-0">
                         <h2 className="text-xl font-bold text-gray-800">{t('chat')}</h2>
                         {currentUser && (
-                            <span className="text-xs text-green-600 font-medium">
+                            <span className="text-xs text-green-600 font-medium block truncate">
                                 {t('logged_in_as') || 'کاربر'}: <span className="font-bold">{currentUser.username}</span>
                             </span>
                         )}
                     </div>
-                    <button
-                        onClick={() => logout()}
-                        className="text-gray-500 hover:text-red-500 transition-colors p-1.5 rounded-full hover:bg-gray-100"
-                        title={t('logout') || 'خروج'}
-                    >
-                        <LogOut size={20} />
-                    </button>
+                    <div className="flex items-center gap-2 shrink-0">
+                        <LanguageSwitcher />
+                        <button
+                            onClick={() => logout()}
+                            className="text-gray-500 hover:text-red-500 transition-colors p-1.5 rounded-full hover:bg-gray-100"
+                            title={t('logout') || 'خروج'}
+                        >
+                            <LogOut size={20} />
+                        </button>
+                    </div>
                 </div>
 
                 <div className="flex-1 overflow-y-auto space-y-2 pr-1">
@@ -182,20 +194,20 @@ const ChatDashboard = () => {
                                         : 'bg-gray-50 hover:bg-gray-150 text-gray-700'
                                 }`}
                             >
-                                <div className="flex flex-col">
-                                    <span className="font-semibold text-[15px]">{u.username}</span>
+                                <div className="flex flex-col min-w-0">
+                                    <span className="font-semibold text-[15px] truncate">{u.username}</span>
                                     {typing ? (
-                                        <span className={`text-xs mt-0.5 animate-pulse ${selectedUser?.id === u.id ? 'text-blue-100' : 'text-blue-500 font-medium'}`}>
-                                            در حال تایپ...
+                                        <span className={`text-xs mt-0.5 animate-pulse truncate ${selectedUser?.id === u.id ? 'text-blue-100' : 'text-blue-500 font-medium'}`}>
+                                            {t('typing')}
                                         </span>
                                     ) : null}
                                 </div>
 
-                                <div className="flex items-center gap-2">
+                                <div className="flex items-center gap-2 shrink-0">
                                     {online ? (
-                                        <span className="h-2.5 w-2.5 rounded-full bg-green-500 shadow-sm animate-pulse" title="آنلاین" />
+                                        <span className="h-2.5 w-2.5 rounded-full bg-green-500 shadow-sm animate-pulse" title={t('online') || 'آنلاین'} />
                                     ) : (
-                                        <span className="h-2.5 w-2.5 rounded-full bg-gray-300" title="آفلاین" />
+                                        <span className="h-2.5 w-2.5 rounded-full bg-gray-300" title={t('offline') || 'آفلاین'} />
                                     )}
                                 </div>
                             </div>
@@ -214,13 +226,13 @@ const ChatDashboard = () => {
                                 <h3 className="text-lg font-bold text-gray-800">{selectedUser.username}</h3>
                                 <span className="text-xs text-gray-500 mt-0.5">
                                     {isUserOnline(selectedUser.id) ? (
-                                        <span className="text-green-600 font-medium">آنلاین</span>
+                                        <span className="text-green-600 font-medium">{t('online')}</span>
                                     ) : (
-                                        <span>آفلاین</span>
+                                        <span>{t('offline')}</span>
                                     )}
                                     {typingUsers[selectedUser.id] && (
-                                        <span className="text-blue-500 font-semibold mr-1 animate-pulse">
-                                            (در حال تایپ...)
+                                        <span className="text-blue-500 font-semibold mx-1 animate-pulse">
+                                            {t('is_typing')}
                                         </span>
                                     )}
                                 </span>
@@ -231,19 +243,21 @@ const ChatDashboard = () => {
                         <div className="flex-1 p-5 overflow-y-auto bg-gray-50 bg-[url('pattern.png')] space-y-4">
                             {messages.map((msg, idx) => {
                                 const isMe = msg.sender_id === currentUser?.id;
+                                const contentDir = msg.message_type === "text" ? getMessageDir(msg.content) : (isRtl ? "rtl" : "ltr");
                                 return (
                                     <div
                                         key={idx}
                                         className={`flex ${isMe ? 'justify-end' : 'justify-start'}`}
                                     >
                                         <div
+                                            dir={contentDir}
                                             className={`p-3 max-w-[70%] rounded-2xl shadow-sm relative transition-all duration-300 ${
                                                 isMe
-                                                    ? "bg-blue-600 text-white rounded-tr-none"
-                                                    : "bg-white text-gray-800 rounded-tl-none border border-gray-100"
+                                                    ? `bg-blue-600 text-white ${isRtl ? 'rounded-tl-none' : 'rounded-tr-none'}`
+                                                    : `bg-white text-gray-800 ${isRtl ? 'rounded-tr-none' : 'rounded-tl-none'} border border-gray-100`
                                             }`}
                                         >
-                                            <div className="pb-1">
+                                            <div className="pb-1 text-right-align">
                                                 {renderMessageContent(msg)}
                                             </div>
 
@@ -268,7 +282,7 @@ const ChatDashboard = () => {
                             <button
                                 onClick={() => fileInputRef.current?.click()}
                                 className="text-gray-500 hover:text-blue-600 transition p-2 rounded-full hover:bg-gray-50"
-                                title="ارسال فایل"
+                                title={t('upload_file') || "ارسال فایل"}
                             >
                                 <Paperclip size={22} />
                                 <input
@@ -292,14 +306,14 @@ const ChatDashboard = () => {
                             {input.trim() ? (
                                 <button
                                     onClick={handleSend}
-                                    className="bg-blue-600 text-white p-3 rounded-full hover:bg-blue-700 transition shadow-md"
+                                    className="bg-blue-600 text-white p-3 rounded-full hover:bg-blue-700 transition shadow-md flex-shrink-0"
                                 >
-                                    <Send size={18} />
+                                    <Send size={18} className={isRtl ? "" : "transform rotate-180"} />
                                 </button>
                             ) : (
                                 <button
-                                    className="bg-gray-100 text-gray-500 p-3 rounded-full hover:bg-gray-200 transition"
-                                    title="ضبط صدا"
+                                    className="bg-gray-100 text-gray-500 p-3 rounded-full hover:bg-gray-200 transition flex-shrink-0"
+                                    title={t('record_voice') || "ضبط صدا"}
                                 >
                                     <Mic size={18} />
                                 </button>
@@ -308,7 +322,7 @@ const ChatDashboard = () => {
                     </>
                 ) : (
                     <div className="flex-1 flex flex-col items-center justify-center text-gray-400 select-none">
-                        <span className="text-lg font-medium">{t('select_user') || 'یک گفتگو را انتخاب کنید'}</span>
+                        <span className="text-lg font-medium">{t('select_user')}</span>
                     </div>
                 )}
             </div>

@@ -2,11 +2,10 @@ import os
 from sqlalchemy.ext.asyncio import create_async_engine, AsyncSession, async_sessionmaker
 from sqlalchemy.orm import DeclarativeBase
 
-DATABASE_URL = "postgresql+asyncpg://postgres:postgres@localhost:5432/goftyar_db"
-# DATABASE_URL = os.getenv(
-#     "DATABASE_URL",
-#     "sqlite+aiosqlite:///./goftyar.db"
-# )
+DATABASE_URL = os.getenv(
+    "DATABASE_URL",
+    "sqlite+aiosqlite:///./goftyar.db"
+)
 
 connect_args = {}
 if DATABASE_URL.startswith("sqlite"):
