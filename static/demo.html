@@ -1,0 +1,45 @@
+<!DOCTYPE html>
+<html lang="fa" dir="rtl">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>صفحه دمو گفت‌یار (Goftyar Test Client)</title>
+    <script src="https://cdn.tailwindcss.com"></script>
+</head>
+<body class="bg-gray-150 min-h-screen flex flex-col justify-between">
+    <!-- Navbar -->
+    <header class="bg-white shadow-sm border-b border-gray-200">
+        <div class="max-w-7xl mx-auto px-4 py-4 flex items-center justify-between">
+            <h1 class="text-2xl font-black text-blue-600">گفت‌یار دمو</h1>
+            <nav class="space-x-4 space-x-reverse text-sm font-medium text-gray-600">
+                <a href="#" class="hover:text-blue-600">خانه</a>
+                <a href="#" class="hover:text-blue-600">خدمات</a>
+                <a href="#" class="hover:text-blue-600">درباره ما</a>
+            </nav>
+        </div>
+    </header>
+
+    <!-- Main Container -->
+    <main class="max-w-4xl mx-auto p-8 flex-1 flex flex-col items-center justify-center text-center space-y-6">
+        <div class="bg-white p-10 rounded-2xl shadow-lg space-y-4 max-w-lg">
+            <div class="text-blue-600 text-6xl font-black">گفت‌یار</div>
+            <h2 class="text-xl font-bold text-gray-800">پلتفرم مدیریت چت مشتریان و ویجت چت‌آز (ChataaS)</h2>
+            <p class="text-gray-500 text-sm leading-relaxed">
+                این یک صفحه دمو برای تست ویجت چت شناور است. اسکریپت ویجت گفت‌یار با موفقیت به پایین این صفحه تزریق شده است. شما می‌توانید روی دکمه شناور آبی در گوشه پایین سمت راست کلیک کنید و چت تعاملی را تست کنید!
+            </p>
+        </div>
+    </main>
+
+    <!-- Footer -->
+    <footer class="bg-white border-t border-gray-200 py-4 text-center text-xs text-gray-400">
+        تمامی حقوق برای گفت‌یار محفوظ است © ۱۴۰۳
+    </footer>
+
+    <!-- Goftyar Chat Widget embed tag -->
+    <script src="/static/widget.js"
+            data-backend-url="http://localhost:8000"
+            data-primary-color="#2563eb"
+            data-title="پشتیبانی گفت‌یار (دمو)">
+    </script>
+</body>
+</html>

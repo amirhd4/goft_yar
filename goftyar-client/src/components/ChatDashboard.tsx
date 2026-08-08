@@ -3,7 +3,7 @@ import { useTranslation } from "react-i18next";
 import { useChatStore } from "../store/useChatStore.ts";
 import { useWebSocket } from "../hooks/useWebSocket.ts";
 import axios from "axios";
-import { Paperclip, Mic, Send, LogOut } from "lucide-react";
+import { Paperclip, Mic, Send, LogOut, Trash2, Check } from "lucide-react";
 import LanguageSwitcher from "./LanguageSwitcher";
 
 
@@ -28,6 +28,13 @@ const ChatDashboard = () => {
     const fileInputRef = useRef<HTMLInputElement>(null);
     const typingTimeoutRef = useRef<any>(null);
     const messagesEndRef = useRef<HTMLDivElement>(null);
+
+    // Audio recording state
+    const [isRecording, setIsRecording] = useState(false);
+    const [recordingTime, setRecordingTime] = useState(0);
+    const mediaRecorderRef = useRef<MediaRecorder | null>(null);
+    const audioChunksRef = useRef<Blob[]>([]);
+    const timerIntervalRef = useRef<any>(null);
 
     const isRtl = i18n.language === "fa";
 
@@ -136,6 +143,90 @@ const ChatDashboard = () => {
         } else {
             return <span className={`text-gray-300 font-bold ${spaceClass} text-xs`} title={t("sent_receipt") || "ارسال شده"}>✓</span>;
         }
+    };
+
+    const startRecording = async () => {
+        if (!selectedUser) return;
+        try {
+            const stream = await navigator.mediaDevices.getUserMedia({ audio: true });
+            audioChunksRef.current = [];
+            const mediaRecorder = new MediaRecorder(stream, { mimeType: "audio/webm" });
+            mediaRecorderRef.current = mediaRecorder;
+
+            mediaRecorder.ondataavailable = (event) => {
+                if (event.data.size > 0) {
+                    audioChunksRef.current.push(event.data);
+                }
+            };
+
+            mediaRecorder.onstop = async () => {
+                // If cancelled, do not upload
+                if (audioChunksRef.current.length === 0) {
+                    stream.getTracks().forEach(track => track.stop());
+                    return;
+                }
+
+                const audioBlob = new Blob(audioChunksRef.current, { type: "audio/webm" });
+                stream.getTracks().forEach(track => track.stop());
+
+                const formData = new FormData();
+                formData.append("file", audioBlob, `voice-${Date.now()}.webm`);
+
+                try {
+                    const res = await axios.post("http://localhost:8000/api/upload", formData, {
+                        headers: { "Content-Type": "multipart/form-data" }
+                    });
+
+                    const fileUrl = res.data.file_url;
+                    const clientMsgId = `msg-${Date.now()}-${Math.random().toString(36).substr(2, 9)}`;
+                    sendMessage(selectedUser.id, fileUrl, "audio", clientMsgId);
+                } catch (err) {
+                    console.error("Error uploading recorded audio:", err);
+                }
+            };
+
+            mediaRecorder.start();
+            setIsRecording(true);
+            setRecordingTime(0);
+
+            timerIntervalRef.current = setInterval(() => {
+                setRecordingTime(prev => prev + 1);
+            }, 1000);
+
+        } catch (err) {
+            console.error("Microphone access denied or error:", err);
+            alert(t("mic_error") || "خطا در دسترسی به میکروفون!");
+        }
+    };
+
+    const stopRecording = () => {
+        if (mediaRecorderRef.current && isRecording) {
+            mediaRecorderRef.current.stop();
+            cleanupRecording();
+        }
+    };
+
+    const cancelRecording = () => {
+        if (mediaRecorderRef.current && isRecording) {
+            audioChunksRef.current = []; // Clear chunks so onstop won't upload
+            mediaRecorderRef.current.stop();
+            cleanupRecording();
+        }
+    };
+
+    const cleanupRecording = () => {
+        setIsRecording(false);
+        if (timerIntervalRef.current) {
+            clearInterval(timerIntervalRef.current);
+            timerIntervalRef.current = null;
+        }
+        setRecordingTime(0);
+    };
+
+    const formatTime = (seconds: number) => {
+        const mins = Math.floor(seconds / 60);
+        const secs = seconds % 60;
+        return `${mins.toString().padStart(2, "0")}:${secs.toString().padStart(2, "0")}`;
     };
 
     const handleSend = () => {
@@ -279,44 +370,73 @@ const ChatDashboard = () => {
 
                         {/* Input Area */}
                         <div className="p-4 bg-white border-t flex items-center gap-3 shadow-md">
-                            <button
-                                onClick={() => fileInputRef.current?.click()}
-                                className="text-gray-500 hover:text-blue-600 transition p-2 rounded-full hover:bg-gray-50"
-                                title={t('upload_file') || "ارسال فایل"}
-                            >
-                                <Paperclip size={22} />
-                                <input
-                                    type="file"
-                                    className="hidden"
-                                    ref={fileInputRef}
-                                    onChange={handleFileUpload}
-                                    accept="image/*,video/*,audio/*"
-                                />
-                            </button>
-
-                            <input
-                                type="text"
-                                value={input}
-                                onChange={e => handleInputChange(e.target.value)}
-                                onKeyPress={e => e.key === 'Enter' && handleSend()}
-                                placeholder={t("type_message") || "پیام خود را بنویسید..."}
-                                className="flex-1 border-none bg-gray-100 rounded-full px-6 py-3.5 focus:outline-none focus:ring-2 focus:ring-blue-400 text-[15px]"
-                            />
-
-                            {input.trim() ? (
-                                <button
-                                    onClick={handleSend}
-                                    className="bg-blue-600 text-white p-3 rounded-full hover:bg-blue-700 transition shadow-md flex-shrink-0"
-                                >
-                                    <Send size={18} className={isRtl ? "" : "transform rotate-180"} />
-                                </button>
+                            {isRecording ? (
+                                <div className="flex-1 flex items-center justify-between bg-red-50 rounded-full px-6 py-2.5 border border-red-200 animate-pulse">
+                                    <div className="flex items-center gap-3 text-red-600">
+                                        <span className="h-3 w-3 rounded-full bg-red-600 animate-ping shrink-0" />
+                                        <span className="font-semibold text-sm">{t('recording') || 'در حال ضبط...'}</span>
+                                        <span className="font-mono text-sm bg-red-100 px-2 py-0.5 rounded text-red-700">{formatTime(recordingTime)}</span>
+                                    </div>
+                                    <div className="flex items-center gap-2">
+                                        <button
+                                            onClick={cancelRecording}
+                                            className="text-gray-500 hover:text-red-600 hover:bg-red-100 transition p-2 rounded-full"
+                                            title={t('cancel') || "لغو"}
+                                        >
+                                            <Trash2 size={20} />
+                                        </button>
+                                        <button
+                                            onClick={stopRecording}
+                                            className="bg-red-600 text-white p-2 rounded-full hover:bg-red-700 transition shadow-md flex items-center justify-center"
+                                            title={t('send') || "ارسال"}
+                                        >
+                                            <Check size={20} />
+                                        </button>
+                                    </div>
+                                </div>
                             ) : (
-                                <button
-                                    className="bg-gray-100 text-gray-500 p-3 rounded-full hover:bg-gray-200 transition flex-shrink-0"
-                                    title={t('record_voice') || "ضبط صدا"}
-                                >
-                                    <Mic size={18} />
-                                </button>
+                                <>
+                                    <button
+                                        onClick={() => fileInputRef.current?.click()}
+                                        className="text-gray-500 hover:text-blue-600 transition p-2 rounded-full hover:bg-gray-50"
+                                        title={t('upload_file') || "ارسال فایل"}
+                                    >
+                                        <Paperclip size={22} />
+                                        <input
+                                            type="file"
+                                            className="hidden"
+                                            ref={fileInputRef}
+                                            onChange={handleFileUpload}
+                                            accept="image/*,video/*,audio/*"
+                                        />
+                                    </button>
+
+                                    <input
+                                        type="text"
+                                        value={input}
+                                        onChange={e => handleInputChange(e.target.value)}
+                                        onKeyPress={e => e.key === 'Enter' && handleSend()}
+                                        placeholder={t("type_message") || "پیام خود را بنویسید..."}
+                                        className="flex-1 border-none bg-gray-100 rounded-full px-6 py-3.5 focus:outline-none focus:ring-2 focus:ring-blue-400 text-[15px]"
+                                    />
+
+                                    {input.trim() ? (
+                                        <button
+                                            onClick={handleSend}
+                                            className="bg-blue-600 text-white p-3 rounded-full hover:bg-blue-700 transition shadow-md flex-shrink-0"
+                                        >
+                                            <Send size={18} className={isRtl ? "" : "transform rotate-180"} />
+                                        </button>
+                                    ) : (
+                                        <button
+                                            onClick={startRecording}
+                                            className="bg-blue-100 text-blue-600 p-3 rounded-full hover:bg-blue-200 transition flex-shrink-0"
+                                            title={t('record_voice') || "ضبط صدا"}
+                                        >
+                                            <Mic size={18} />
+                                        </button>
+                                    )}
+                                </>
                             )}
                         </div>
                     </>

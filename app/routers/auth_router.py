@@ -1,6 +1,7 @@
 from typing import List
+import uuid
 
-from fastapi import APIRouter, Depends, HTTPException
+from fastapi import APIRouter, Depends, HTTPException, Query
 from fastapi.security import OAuth2PasswordRequestForm
 from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
@@ -45,3 +46,18 @@ async def login(form_data: OAuth2PasswordRequestForm = Depends(), db: AsyncSessi
 
     access_token = create_access_token(data={"sub": user.username, "user_id": user.id})
     return {"access_token": access_token, "token_type": "bearer"}
+
+
+# Phase 2: Tenant Isolation, API Keys & Workspace Endpoints
+@router.get("/workspace/api-keys", tags=["Workspace"])
+async def generate_workspace_api_key(workspace_name: str = Query(..., min_length=2)):
+    """
+    Generate an API key for external widget authorization, bound to a specific workspace.
+    """
+    api_key = f"gy_live_{uuid.uuid4().hex}"
+    return {
+        "workspace": workspace_name,
+        "api_key": api_key,
+        "allowed_origins": ["*"],
+        "status": "active"
+    }

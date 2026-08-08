@@ -1,0 +1,213 @@
+<!DOCTYPE html>
+<html lang="fa" dir="rtl">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>گفت‌یار - ویجت پشتیبانی</title>
+    <script src="https://cdn.tailwindcss.com"></script>
+    <style>
+        ::-webkit-scrollbar {
+            width: 5px;
+        }
+        ::-webkit-scrollbar-track {
+            background: #f1f1f1;
+        }
+        ::-webkit-scrollbar-thumb {
+            background: #cbd5e1;
+            border-radius: 5px;
+        }
+    </style>
+</head>
+<body class="bg-gray-50 h-screen flex flex-col justify-between overflow-hidden text-sm">
+    <div id="setup-view" class="flex-1 flex flex-col items-center justify-center p-6 space-y-4">
+        <div class="text-center">
+            <h1 class="text-xl font-bold text-gray-800">به پشتیبانی خوش آمدید</h1>
+            <p class="text-gray-500 text-xs mt-1">برای شروع گفتگو، نام خود را وارد کنید یا به عنوان مهمان ادامه دهید</p>
+        </div>
+
+        <div class="w-full space-y-3">
+            <input type="text" id="username-input" placeholder="نام شما (اختیاری)" class="w-full px-4 py-2.5 rounded-lg border border-gray-300 focus:outline-none focus:ring-2 focus:ring-blue-500 text-sm">
+            <button id="start-btn" class="w-full bg-blue-600 hover:bg-blue-700 text-white font-bold py-2.5 rounded-lg shadow transition">شروع گفتگو</button>
+            <div class="text-center">
+                <span class="text-xs text-gray-400">یا</span>
+            </div>
+            <button id="guest-btn" class="w-full bg-gray-100 hover:bg-gray-200 text-gray-700 font-bold py-2 rounded-lg transition text-xs">ورود به عنوان مهمان ناشناس</button>
+        </div>
+    </div>
+
+    <!-- Chat view -->
+    <div id="chat-view" class="hidden flex-1 flex flex-col h-full">
+        <!-- Messages list -->
+        <div id="messages-container" class="flex-1 overflow-y-auto p-4 space-y-3 bg-gray-100"></div>
+
+        <!-- Typing status indicator -->
+        <div id="typing-indicator" class="px-4 py-1 text-xs text-blue-500 font-medium italic hidden">پشتیبان در حال نوشتن است...</div>
+
+        <!-- Input control panel -->
+        <div class="p-3 bg-white border-t flex items-center gap-2">
+            <input type="text" id="message-input" placeholder="پیام خود را بنویسید..." class="flex-1 px-4 py-2 rounded-full border border-gray-300 focus:outline-none focus:ring-2 focus:ring-blue-500 text-xs">
+            <button id="send-btn" class="bg-blue-600 hover:bg-blue-700 text-white p-2.5 rounded-full transition shadow">
+                <svg class="w-4 h-4 fill-current transform rotate-180" viewBox="0 0 20 20">
+                    <path d="M10.894 2.553a1 1 0 00-1.788 0l-7 14a1 1 0 001.169 1.409l5-1.429A1 1 0 009 15.571V11a1 1 0 112 0v4.571a1 1 0 00.725.962l5 1.428a1 1 0 001.17-1.408l-7-14z" />
+                </svg>
+            </button>
+        </div>
+    </div>
+
+    <script>
+        const setupView = document.getElementById('setup-view');
+        const chatView = document.getElementById('chat-view');
+        const usernameInput = document.getElementById('username-input');
+        const startBtn = document.getElementById('start-btn');
+        const guestBtn = document.getElementById('guest-btn');
+        const messagesContainer = document.getElementById('messages-container');
+        const messageInput = document.getElementById('message-input');
+        const sendBtn = document.getElementById('send-btn');
+        const typingIndicator = document.getElementById('typing-indicator');
+
+        let ws = null;
+        let token = null;
+        let currentUser = null;
+        let chatPartner = null; // Support staff/user to send message to
+
+        const API_URL = window.location.origin;
+
+        async function initGuestSession(customName) {
+            const guestUsername = customName ? `${customName.trim()}-${Math.floor(1000 + Math.random() * 9000)}` : `مهمان-${Math.floor(1000 + Math.random() * 9000)}`;
+            const fallbackPassword = "widget_guest_secure_pwd_123";
+
+            try {
+                // Try to register the guest
+                await fetch(`${API_URL}/api/auth/register`, {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({ username: guestUsername, password: fallbackPassword })
+                });
+            } catch (e) {
+                // Username might already exist or registered, ignore
+            }
+
+            try {
+                // Login
+                const formBody = new URLSearchParams();
+                formBody.append('username', guestUsername);
+                formBody.append('password', fallbackPassword);
+
+                const loginRes = await fetch(`${API_URL}/api/auth/login`, {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/x-www-form-urlencoded' },
+                    body: formBody
+                });
+                const loginData = await loginRes.json();
+
+                if (loginData.access_token) {
+                    token = loginData.access_token;
+                    // Parse JWT
+                    const payload = JSON.parse(atob(token.split('.')[1]));
+                    currentUser = { id: payload.user_id, username: payload.sub };
+
+                    // Fetch other users (Staff/Support Agent to chat with)
+                    const usersRes = await fetch(`${API_URL}/api/auth/users`);
+                    const allUsers = await usersRes.json();
+
+                    // Chat with first non-guest user or any active support staff
+                    const supportAgent = allUsers.find(u => u.id !== currentUser.id && !u.username.includes('مهمان') && !u.username.includes('guest'));
+                    chatPartner = supportAgent || allUsers.find(u => u.id !== currentUser.id);
+
+                    setupView.classList.add('hidden');
+                    chatView.classList.remove('hidden');
+
+                    // Load Chat History if chatPartner is available
+                    if (chatPartner) {
+                        const historyRes = await fetch(`${API_URL}/api/messages/${chatPartner.id}?current_user_id=${currentUser.id}`);
+                        const history = await historyRes.json();
+                        history.forEach(appendMessage);
+                    }
+
+                    connectWebSocket();
+                } else {
+                    alert('خطا در ورود به سیستم!');
+                }
+            } catch (err) {
+                console.error('Error establishing session:', err);
+                alert('ارتباط با سرور برقرار نشد!');
+            }
+        }
+
+        function appendMessage(msg) {
+            const isMe = msg.sender_id === currentUser.id;
+            const msgEl = document.createElement('div');
+            msgEl.className = `flex ${isMe ? 'justify-end' : 'justify-start'}`;
+
+            const bubbleEl = document.createElement('div');
+            bubbleEl.className = `max-w-[80%] p-2.5 rounded-2xl shadow-sm text-xs leading-relaxed ${isMe ? 'bg-blue-600 text-white rounded-tr-none' : 'bg-white text-gray-800 rounded-tl-none border border-gray-200'}`;
+            bubbleEl.textContent = msg.content;
+
+            msgEl.appendChild(bubbleEl);
+            messagesContainer.appendChild(msgEl);
+            messagesContainer.scrollTop = messagesContainer.scrollHeight;
+        }
+
+        function connectWebSocket() {
+            const wsScheme = window.location.protocol === 'https:' ? 'wss' : 'ws';
+            ws = new WebSocket(`${wsScheme}://${window.location.host}/ws/chat?token=${token}`);
+
+            ws.onmessage = (event) => {
+                const data = JSON.parse(event.data);
+                if (data.type === "message") {
+                    appendMessage(data);
+                } else if (data.type === "typing") {
+                    if (data.sender_id === chatPartner?.id) {
+                        if (data.is_typing) {
+                            typingIndicator.classList.remove('hidden');
+                        } else {
+                            typingIndicator.classList.add('hidden');
+                        }
+                    }
+                }
+            };
+
+            ws.onclose = () => {
+                setTimeout(connectWebSocket, 3000);
+            };
+        }
+
+        function sendMessage() {
+            const content = messageInput.value.trim();
+            if (!content || !ws || !chatPartner) return;
+
+            const clientMsgId = `msg-${Date.now()}-${Math.random().toString(36).substr(2, 9)}`;
+            const payload = {
+                type: "message",
+                receiver_id: chatPartner.id,
+                content: content,
+                msgType: "text",
+                client_msg_id: clientMsgId
+            };
+
+            ws.send(JSON.stringify(payload));
+            appendMessage({
+                sender_id: currentUser.id,
+                receiver_id: chatPartner.id,
+                content: content
+            });
+            messageInput.value = '';
+        }
+
+        // Onboards
+        startBtn.addEventListener('click', () => {
+            const name = usernameInput.value;
+            initGuestSession(name || null);
+        });
+
+        guestBtn.addEventListener('click', () => {
+            initGuestSession(null);
+        });
+
+        sendBtn.addEventListener('click', sendMessage);
+        messageInput.addEventListener('keypress', (e) => {
+            if (e.key === 'Enter') sendMessage();
+        });
+    </script>
+</body>
+</html>
