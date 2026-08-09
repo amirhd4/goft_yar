@@ -32,7 +32,19 @@ const resources = {
       "sent_receipt": "Sent",
       "widget": "Widget",
       "goftyar": "Goftyar",
-      "select_language": "Select Language"
+      "select_language": "Select Language",
+      "create_workspace": "Create Workspace",
+      "workspace_name": "Workspace Name",
+      "workspace_key": "Workspace API Key",
+      "widget_script": "Widget Embed Script",
+      "copy_script": "Copy Script",
+      "copied": "Copied!",
+      "workspace_title": "Workspace Settings",
+      "call_user": "Start Video Call",
+      "incoming_call": "Incoming Video Call...",
+      "accept_call": "Accept Call",
+      "decline_call": "Decline",
+      "end_call": "End Call"
     }
   },
   fa: {
@@ -65,7 +77,19 @@ const resources = {
       "sent_receipt": "ارسال شده",
       "widget": "ویجت",
       "goftyar": "گفت‌یار",
-      "select_language": "انتخاب زبان"
+      "select_language": "انتخاب زبان",
+      "create_workspace": "ایجاد فضای کاری",
+      "workspace_name": "نام فضای کاری",
+      "workspace_key": "کلید فضای کاری",
+      "widget_script": "اسکریپت ویجت",
+      "copy_script": "کپی اسکریپت",
+      "copied": "کپی شد!",
+      "workspace_title": "تنظیمات فضای کاری",
+      "call_user": "شروع تماس تصویری",
+      "incoming_call": "تماس تصویری ورودی...",
+      "accept_call": "پاسخ تماس",
+      "decline_call": "رد تماس",
+      "end_call": "قطع تماس"
     }
   }
 }

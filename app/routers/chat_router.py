@@ -66,10 +66,11 @@ async def websocket_chat(websocket: WebSocket, token: str = Query(...)):
     await manager.connect(user_id, websocket)
 
     try:
+        online_users_list = await manager.get_online_users()
         await manager.send_personal_message(
             {
                 "type": "presence_list",
-                "online_users": manager.get_online_users()
+                "online_users": online_users_list
             },
             websocket
         )
@@ -137,6 +138,44 @@ async def websocket_chat(websocket: WebSocket, token: str = Query(...)):
                 })
                 continue
 
+            elif msg_type_event == "call_user":
+                receiver_id = int(message_json.get("receiver_id"))
+                offer = message_json.get("offer")
+                await manager.send_to_user(receiver_id, {
+                    "type": "call_user",
+                    "sender_id": user_id,
+                    "offer": offer
+                })
+                continue
+
+            elif msg_type_event == "answer_call":
+                receiver_id = int(message_json.get("receiver_id"))
+                answer = message_json.get("answer")
+                await manager.send_to_user(receiver_id, {
+                    "type": "answer_call",
+                    "sender_id": user_id,
+                    "answer": answer
+                })
+                continue
+
+            elif msg_type_event == "ice_candidate":
+                receiver_id = int(message_json.get("receiver_id"))
+                candidate = message_json.get("candidate")
+                await manager.send_to_user(receiver_id, {
+                    "type": "ice_candidate",
+                    "sender_id": user_id,
+                    "candidate": candidate
+                })
+                continue
+
+            elif msg_type_event == "hangup":
+                receiver_id = int(message_json.get("receiver_id"))
+                await manager.send_to_user(receiver_id, {
+                    "type": "hangup",
+                    "sender_id": user_id
+                })
+                continue
+
             receiver_id = int(message_json["receiver_id"])
             content = message_json["content"]
             message_format = message_json.get("msgType") or message_json.get("message_type") or "text"
@@ -183,7 +222,7 @@ async def websocket_chat(websocket: WebSocket, token: str = Query(...)):
             await manager.send_personal_message(payload_to_send, websocket)
 
     except WebSocketDisconnect:
-        manager.disconnect(user_id)
+        await manager.disconnect(user_id)
         await manager.broadcast({
             "type": "presence",
             "user_id": user_id,
@@ -191,7 +230,7 @@ async def websocket_chat(websocket: WebSocket, token: str = Query(...)):
         })
     except Exception as e:
         print(f"WebSocket error in user {user_id}: {e}")
-        manager.disconnect(user_id)
+        await manager.disconnect(user_id)
         await manager.broadcast({
             "type": "presence",
             "user_id": user_id,

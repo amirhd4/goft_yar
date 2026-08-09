@@ -77,6 +77,19 @@ export const useWebSocket = () => {
                     return;
                 }
 
+                // WebRTC Signaling
+                if (data.type === "call_user") {
+                    useChatStore.getState().setCallPartner({ id: data.sender_id, username: `User #${data.sender_id}` });
+                    useChatStore.getState().setIncomingOffer(data.offer);
+                    useChatStore.getState().setCallState("incoming");
+                    return;
+                }
+
+                if (data.type === "answer_call" || data.type === "ice_candidate" || data.type === "hangup") {
+                    window.dispatchEvent(new CustomEvent("webrtc_event", { detail: data }));
+                    return;
+                }
+
                 if (data.type === "message" || data.content) {
                     addMessage({
                         id: data.id,
@@ -172,5 +185,44 @@ export const useWebSocket = () => {
         }
     };
 
-    return { sendMessage, sendTyping, sendRead };
+    const sendCallOffer = (receiver_id: number, offer: any) => {
+        if (ws.current && ws.current.readyState === WebSocket.OPEN) {
+            ws.current.send(JSON.stringify({
+                type: "call_user",
+                receiver_id,
+                offer
+            }));
+        }
+    };
+
+    const sendCallAnswer = (receiver_id: number, answer: any) => {
+        if (ws.current && ws.current.readyState === WebSocket.OPEN) {
+            ws.current.send(JSON.stringify({
+                type: "answer_call",
+                receiver_id,
+                answer
+            }));
+        }
+    };
+
+    const sendIceCandidate = (receiver_id: number, candidate: any) => {
+        if (ws.current && ws.current.readyState === WebSocket.OPEN) {
+            ws.current.send(JSON.stringify({
+                type: "ice_candidate",
+                receiver_id,
+                candidate
+            }));
+        }
+    };
+
+    const sendHangup = (receiver_id: number) => {
+        if (ws.current && ws.current.readyState === WebSocket.OPEN) {
+            ws.current.send(JSON.stringify({
+                type: "hangup",
+                receiver_id
+            }));
+        }
+    };
+
+    return { sendMessage, sendTyping, sendRead, sendCallOffer, sendCallAnswer, sendIceCandidate, sendHangup };
 };
