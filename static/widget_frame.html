@@ -3,9 +3,31 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>گفت‌یار - ویجت پشتیبانی</title>
+    <title>گفت‌وگو با پشتیبانی</title>
     <script src="https://cdn.tailwindcss.com"></script>
+    <script>
+        tailwind.config = {
+            darkMode: 'class',
+            theme: {
+                extend: {
+                    colors: {
+                        primary: {
+                            50: '#eff6ff',
+                            100: '#dbeafe',
+                            200: '#bfdbfe',
+                            300: '#93c5fd',
+                            400: '#60a5fa',
+                            500: '#3b82f6',
+                            600: '#2563eb',
+                            700: '#1d4ed8',
+                        }
+                    }
+                }
+            }
+        }
+    </script>
     <style>
+        /* Custom scrollbar */
         ::-webkit-scrollbar {
             width: 5px;
         }
@@ -14,200 +36,723 @@
         }
         ::-webkit-scrollbar-thumb {
             background: #cbd5e1;
-            border-radius: 5px;
+            border-radius: 10px;
+        }
+        ::-webkit-scrollbar-thumb:hover {
+            background: #94a3b8;
         }
     </style>
 </head>
-<body class="bg-gray-50 h-screen flex flex-col justify-between overflow-hidden text-sm">
-    <div id="setup-view" class="flex-1 flex flex-col items-center justify-center p-6 space-y-4">
-        <div class="text-center">
-            <h1 class="text-xl font-bold text-gray-800">به پشتیبانی خوش آمدید</h1>
-            <p class="text-gray-500 text-xs mt-1">برای شروع گفتگو، نام خود را وارد کنید یا به عنوان مهمان ادامه دهید</p>
-        </div>
+<body class="bg-gray-50 h-screen flex flex-col font-sans select-none overflow-hidden">
 
-        <div class="w-full space-y-3">
-            <input type="text" id="username-input" placeholder="نام شما (اختیاری)" class="w-full px-4 py-2.5 rounded-lg border border-gray-300 focus:outline-none focus:ring-2 focus:ring-blue-500 text-sm">
-            <button id="start-btn" class="w-full bg-blue-600 hover:bg-blue-700 text-white font-bold py-2.5 rounded-lg shadow transition">شروع گفتگو</button>
-            <div class="text-center">
-                <span class="text-xs text-gray-400">یا</span>
+    <!-- Language Translations Dictionary -->
+    <script>
+        const i18n = {
+            en: {
+                title: "Support Chat",
+                online: "Online",
+                offline: "Offline",
+                agent_typing: "Agent is typing...",
+                placeholder: "Type your message...",
+                send: "Send",
+                select_language: "Language",
+                calling: "Calling agent...",
+                incoming_call: "Incoming video call...",
+                accept: "Accept",
+                decline: "Decline",
+                end_call: "End Call",
+                image: "Image",
+                video: "Video",
+                audio: "Audio",
+                file_error: "Error uploading file",
+                connecting: "Connecting...",
+            },
+            fa: {
+                title: "گفتگو با پشتیبانی",
+                online: "برخط",
+                offline: "پشت خط",
+                agent_typing: "پشتیبان در حال نوشتن...",
+                placeholder: "پیام خود را بنویسید...",
+                send: "ارسال",
+                select_language: "زبان",
+                calling: "در حال تماس با پشتیبان...",
+                incoming_call: "تماس تصویری ورودی...",
+                accept: "پاسخ",
+                decline: "رد تماس",
+                end_call: "قطع تماس",
+                image: "نگاره پویا",
+                video: "ویدیو",
+                audio: "صدا",
+                file_error: "خطا در آپلود فایل",
+                connecting: "در حال اتصال...",
+            }
+        };
+
+        let currentLang = 'fa';
+
+        function updateLanguage(lang) {
+            currentLang = lang;
+            document.documentElement.dir = lang === 'fa' ? 'rtl' : 'ltr';
+            document.documentElement.lang = lang;
+
+            // Apply translations to UI elements
+            document.getElementById('widget-title').innerText = i18n[lang].title;
+            document.getElementById('input-message').placeholder = i18n[lang].placeholder;
+            
+            // Re-render strings if necessary
+            updateStatusText();
+        }
+    </script>
+
+    <!-- Main Widget Container -->
+    <div class="flex-1 flex flex-col h-full bg-white relative">
+        
+        <!-- Header -->
+        <div class="bg-primary-600 text-white p-4 shadow-md flex items-center justify-between z-10">
+            <div class="flex items-center gap-3">
+                <div class="relative">
+                    <div class="w-10 h-10 rounded-full bg-primary-100 flex items-center justify-center text-primary-600 font-bold text-lg" id="agent-avatar">
+                        P
+                    </div>
+                    <span class="absolute bottom-0 right-0 block h-2.5 w-2.5 rounded-full bg-gray-400 ring-2 ring-white" id="status-indicator"></span>
+                </div>
+                <div>
+                    <h1 class="font-bold text-sm" id="widget-title">گفتگو با پشتیبانی</h1>
+                    <span class="text-xs text-primary-100 block" id="agent-status">پشت خط</span>
+                </div>
             </div>
-            <button id="guest-btn" class="w-full bg-gray-100 hover:bg-gray-200 text-gray-700 font-bold py-2 rounded-lg transition text-xs">ورود به عنوان مهمان ناشناس</button>
+
+            <!-- Header Actions -->
+            <div class="flex items-center gap-2">
+                <!-- Video Call Action -->
+                <button id="btn-call" class="hover:bg-primary-700 p-2 rounded-full transition-colors hidden" title="تماس تصویری">
+                    <svg xmlns="http://www.w3.org/2000/svg" width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" class="lucide lucide-video">
+                        <path d="m22 8-6 4 6 4V8Z"/>
+                        <rect width="14" height="12" x="2" y="6" rx="2" ry="2"/>
+                    </svg>
+                </button>
+
+                <!-- Language Switcher -->
+                <select id="lang-select" onchange="updateLanguage(this.value)" class="bg-primary-700 text-white text-xs border-none rounded p-1.5 focus:ring-1 focus:ring-white">
+                    <option value="fa" selected>FA</option>
+                    <option value="en">EN</option>
+                </select>
+            </div>
         </div>
-    </div>
 
-    <!-- Chat view -->
-    <div id="chat-view" class="hidden flex-1 flex-col h-full">
-        <!-- Messages list -->
-        <div id="messages-container" class="flex-1 overflow-y-auto p-4 space-y-3 bg-gray-100"></div>
+        <!-- Messages Area -->
+        <div id="messages-container" class="flex-1 p-4 overflow-y-auto bg-gray-50 flex flex-col gap-3">
+            <!-- Messages injected dynamically -->
+        </div>
 
-        <!-- Typing status indicator -->
-        <div id="typing-indicator" class="px-4 py-1 text-xs text-blue-500 font-medium italic hidden">پشتیبان در حال نوشتن است...</div>
+        <!-- Typing Indicator -->
+        <div id="typing-indicator" class="px-4 py-1.5 text-xs text-gray-500 bg-gray-50 italic hidden">
+            پشتیبان در حال نوشتن...
+        </div>
 
-        <!-- Input control panel -->
-        <div class="p-3 bg-white border-t flex items-center gap-2">
-            <input type="text" id="message-input" placeholder="پیام خود را بنویسید..." class="flex-1 px-4 py-2 rounded-full border border-gray-300 focus:outline-none focus:ring-2 focus:ring-blue-500 text-xs">
-            <button id="send-btn" class="bg-blue-600 hover:bg-blue-700 text-white p-2.5 rounded-full transition shadow">
-                <svg class="w-4 h-4 fill-current transform rotate-180" viewBox="0 0 20 20">
-                    <path d="M10.894 2.553a1 1 0 00-1.788 0l-7 14a1 1 0 001.169 1.409l5-1.429A1 1 0 009 15.571V11a1 1 0 112 0v4.571a1 1 0 00.725.962l5 1.428a1 1 0 001.17-1.408l-7-14z" />
+        <!-- Input Area -->
+        <div class="p-3 border-t bg-white flex items-center gap-2">
+            <!-- Attachment Button -->
+            <button onclick="document.getElementById('file-input').click()" class="text-gray-400 hover:text-primary-600 p-1.5 rounded-full hover:bg-gray-100 transition" title="ارسال فایل">
+                <svg xmlns="http://www.w3.org/2000/svg" width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" class="lucide lucide-paperclip">
+                    <path d="m21.44 11.05-9.19 9.19a6 6 0 0 1-8.49-8.49l9.19-9.19a4 4 0 0 1 5.66 5.66l-9.2 9.19a2 2 0 0 1-2.83-2.83l8.49-8.48"/>
+                </svg>
+            </button>
+            <input type="file" id="file-input" class="hidden" accept="image/*,video/*,audio/*" onchange="handleFileUpload(event)">
+
+            <!-- Text Input -->
+            <input type="text" id="input-message" placeholder="پیام خود را بنویسید..." class="flex-1 border-none bg-gray-100 rounded-full px-4 py-2.5 text-sm focus:outline-none focus:ring-1 focus:ring-primary-400">
+
+            <!-- Send Button -->
+            <button id="btn-send" onclick="sendTextMessage()" class="bg-primary-600 text-white p-2.5 rounded-full hover:bg-primary-700 transition shadow-sm">
+                <svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" class="lucide lucide-send">
+                    <path d="m22 2-7 20-4-9-9-4Z"/>
+                    <path d="M22 2 11 13"/>
                 </svg>
             </button>
         </div>
+
+        <!-- WebRTC Video Calling Overlay -->
+        <div id="call-overlay" class="absolute inset-0 bg-slate-900 z-50 flex flex-col items-center justify-between p-6 hidden">
+            <!-- Calling status -->
+            <div class="text-center mt-8">
+                <h2 id="call-title" class="text-white text-lg font-bold mb-1">تماس تصویری</h2>
+                <span id="call-status" class="text-slate-400 text-sm">در حال تماس...</span>
+            </div>
+
+            <!-- Video Windows -->
+            <div class="relative w-full flex-1 max-h-[350px] flex items-center justify-center my-4 bg-black rounded-xl overflow-hidden shadow-2xl">
+                <!-- Remote Video (Full Size) -->
+                <video id="remote-video" autoplay playsinline class="w-full h-full object-cover"></video>
+                <!-- Local Video (Picture-in-Picture) -->
+                <video id="local-video" autoplay playsinline muted class="absolute bottom-4 right-4 w-28 h-36 object-cover rounded-lg border-2 border-white shadow-lg bg-slate-800"></video>
+            </div>
+
+            <!-- Call Controls -->
+            <div class="flex items-center gap-4 mb-4">
+                <!-- Accept Call (incoming only) -->
+                <button id="btn-accept-call" onclick="acceptCall()" class="bg-green-500 text-white p-4 rounded-full hover:bg-green-600 transition shadow-lg hidden">
+                    <svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" class="lucide lucide-phone">
+                        <path d="M22 16.92v3a2 2 0 0 1-2.18 2 19.79 19.79 0 0 1-8.63-3.07 19.5 19.5 0 0 1-6-6 19.79 19.79 0 0 1-3.07-8.67A2 2 0 0 1 4.11 2h3a2 2 0 0 1 2 1.72 12.84 12.84 0 0 0 .7 2.81 2 2 0 0 1-.45 2.11L8.09 9.91a16 16 0 0 0 6 6l1.27-1.27a2 2 0 0 1 2.11-.45 12.84 12.84 0 0 0 2.81.7A2 2 0 0 1 22 9.24Z"/>
+                    </svg>
+                </button>
+
+                <!-- Decline/Hangup Call -->
+                <button id="btn-hangup-call" onclick="hangupCall()" class="bg-red-500 text-white p-4 rounded-full hover:bg-red-600 transition shadow-lg">
+                    <svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" class="lucide lucide-phone-off">
+                        <line x1="10.6" y1="10.6" x2="2" y2="2"/>
+                        <line x1="22" y1="22" x2="13.4" y2="13.4"/>
+                        <path d="M10.6 10.6a12.8 12.8 0 0 0-3.3-2L4.1 9.9a16 16 0 0 0 6 6l1.3-1.3a12.8 12.8 0 0 0-2-3.3z"/>
+                        <path d="M22 16.9v3a2 2 0 0 1-2.2 2c-2.3 0-4.5-.6-6.4-1.7"/>
+                        <path d="M16 10.6a12.8 12.8 0 0 0 1.7-6.5A2 2 0 0 0 15.5 2h-3a2 2 0 0 0-2 1.7c-.1.7-.2 1.4-.4 2.1"/>
+                    </svg>
+                </button>
+            </div>
+        </div>
+
     </div>
 
+    <!-- Script logic -->
     <script>
-        const setupView = document.getElementById('setup-view');
-        const chatView = document.getElementById('chat-view');
-        const usernameInput = document.getElementById('username-input');
-        const startBtn = document.getElementById('start-btn');
-        const guestBtn = document.getElementById('guest-btn');
-        const messagesContainer = document.getElementById('messages-container');
-        const messageInput = document.getElementById('message-input');
-        const sendBtn = document.getElementById('send-btn');
-        const typingIndicator = document.getElementById('typing-indicator');
+        const urlParams = new URLSearchParams(window.location.search);
+        const apiKey = urlParams.get('api_key');
+        const defaultBackendUrl = window.location.origin;
+        const backendUrl = urlParams.get('backend_url') || defaultBackendUrl;
 
-        let ws = null;
         let token = null;
         let currentUser = null;
-        let chatPartner = null; // Support staff/user to send message to
+        let targetOperator = null;
+        let socket = null;
+        let localStream = null;
+        let rtcConnection = null;
+        let pendingOffer = null;
 
-        const API_URL = window.location.origin;
+        const messagesContainer = document.getElementById('messages-container');
+        const typingIndicator = document.getElementById('typing-indicator');
 
-        async function initGuestSession(customName) {
-            const guestUsername = customName ? `${customName.trim()}-${Math.floor(1000 + Math.random() * 9000)}` : `مهمان-${Math.floor(1000 + Math.random() * 9000)}`;
-            const fallbackPassword = "widget_guest_secure_pwd_123";
+        // Ice servers for WebRTC calling
+        const iceConfiguration = {
+            iceServers: [
+                { urls: 'stun:stun.l.google.com:19302' },
+                { urls: 'stun:stun1.l.google.com:19302' }
+            ]
+        };
 
+        function updateStatusText() {
+            const statusIndicator = document.getElementById('status-indicator');
+            const agentStatus = document.getElementById('agent-status');
+            const isOnline = statusIndicator.classList.contains('bg-green-500');
+
+            if (isOnline) {
+                agentStatus.innerText = i18n[currentLang].online;
+                agentStatus.classList.remove('text-primary-200');
+                agentStatus.classList.add('text-green-200');
+            } else {
+                agentStatus.innerText = i18n[currentLang].offline;
+                agentStatus.classList.remove('text-green-200');
+                agentStatus.classList.add('text-primary-100');
+            }
+        }
+
+        // Onboard Guest
+        async function onboardGuest() {
+            if (!apiKey) return;
+
+            const savedUuid = localStorage.getItem('goftyar_guest_uuid');
             try {
-                // Try to register the guest
-                await fetch(`${API_URL}/api/auth/register`, {
+                const response = await fetch(`${backendUrl}/api/auth/widget/onboard`, {
                     method: 'POST',
                     headers: { 'Content-Type': 'application/json' },
-                    body: JSON.stringify({ username: guestUsername, password: fallbackPassword })
+                    body: JSON.stringify({ api_key: apiKey, guest_uuid: savedUuid })
                 });
-            } catch (e) {
-                // Username might already exist or registered, ignore
-            }
 
-            try {
-                // Login
-                const formBody = new URLSearchParams();
-                formBody.append('username', guestUsername);
-                formBody.append('password', fallbackPassword);
+                if (!response.ok) throw new Error("Onboard failed");
+                const data = await response.json();
 
-                const loginRes = await fetch(`${API_URL}/api/auth/login`, {
-                    method: 'POST',
-                    headers: { 'Content-Type': 'application/x-www-form-urlencoded' },
-                    body: formBody
-                });
-                const loginData = await loginRes.json();
+                token = data.token;
+                localStorage.setItem('goftyar_guest_uuid', data.guest_uuid);
+                localStorage.setItem('goftyar_guest_token', data.token);
+
+                currentUser = {
+                    id: data.guest_user_id,
+                    username: data.guest_username
+                };
+
+                // Find operators
+                await fetchOperators();
                 
-                if (loginData.access_token) {
-                    token = loginData.access_token;
-                    // Parse JWT
-                    const payload = JSON.parse(atob(token.split('.')[1]));
-                    currentUser = { id: payload.user_id, username: payload.sub };
+                // Connect WebSocket
+                connectWebSocket();
 
-                    // Fetch other users (Staff/Support Agent to chat with)
-                    const usersRes = await fetch(`${API_URL}/api/auth/users`);
-                    const allUsers = await usersRes.json();
+            } catch (err) {
+                console.error("Error onboarding guest:", err);
+            }
+        }
+
+        // Fetch operator list
+        async function fetchOperators() {
+            try {
+                const res = await fetch(`${backendUrl}/api/auth/workspaces/operators?api_key=${apiKey}`);
+                const operators = await res.json();
+                
+                if (operators && operators.length > 0) {
+                    targetOperator = operators[0]; // chat with first operator
+                    document.getElementById('agent-avatar').innerText = targetOperator.username[0].toUpperCase();
+                    document.getElementById('widget-title').innerText = targetOperator.username;
                     
-                    // Chat with first non-guest user or any active support staff
-                    const supportAgent = allUsers.find(u => u.id !== currentUser.id && !u.username.includes('مهمان') && !u.username.includes('guest'));
-                    chatPartner = supportAgent || allUsers.find(u => u.id !== currentUser.id);
+                    // Show video call button since operator exists
+                    document.getElementById('btn-call').classList.remove('hidden');
 
-                    setupView.classList.add('hidden');
-                    chatView.classList.remove('hidden');
-
-                    // Load Chat History if chatPartner is available
-                    if (chatPartner) {
-                        const historyRes = await fetch(`${API_URL}/api/messages/${chatPartner.id}?current_user_id=${currentUser.id}`);
-                        const history = await historyRes.json();
-                        history.forEach(appendMessage);
-                    }
-
-                    connectWebSocket();
-                } else {
-                    alert('خطا در ورود به سیستم!');
+                    // Load Chat History
+                    await loadChatHistory();
                 }
             } catch (err) {
-                console.error('Error establishing session:', err);
-                alert('ارتباط با سرور برقرار نشد!');
+                console.error("Error fetching operators:", err);
             }
         }
 
-        function appendMessage(msg) {
-            const isMe = msg.sender_id === currentUser.id;
-            const msgEl = document.createElement('div');
-            msgEl.className = `flex ${isMe ? 'justify-end' : 'justify-start'}`;
-            
-            const bubbleEl = document.createElement('div');
-            bubbleEl.className = `max-w-[80%] p-2.5 rounded-2xl shadow-sm text-xs leading-relaxed ${isMe ? 'bg-blue-600 text-white rounded-tr-none' : 'bg-white text-gray-800 rounded-tl-none border border-gray-200'}`;
-            bubbleEl.textContent = msg.content;
+        // Load chat history
+        async function loadChatHistory() {
+            if (!targetOperator || !currentUser) return;
 
-            msgEl.appendChild(bubbleEl);
-            messagesContainer.appendChild(msgEl);
-            messagesContainer.scrollTop = messagesContainer.scrollHeight;
+            try {
+                const res = await fetch(`${backendUrl}/api/messages/${targetOperator.id}?current_user_id=${currentUser.id}`);
+                const history = await res.json();
+                
+                messagesContainer.innerHTML = '';
+                history.forEach(appendMessage);
+                scrollToBottom();
+
+                // Send read receipt
+                sendRead(targetOperator.id);
+            } catch (err) {
+                console.error("Error loading chat history:", err);
+            }
         }
 
+        // Connect WebSocket
         function connectWebSocket() {
-            const wsScheme = window.location.protocol === 'https:' ? 'wss' : 'ws';
-            ws = new WebSocket(`${wsScheme}://${window.location.host}/ws/chat?token=${token}`);
+            if (!token) return;
 
-            ws.onmessage = (event) => {
+            const wsProto = backendUrl.startsWith('https') ? 'wss' : 'ws';
+            const cleanUrl = backendUrl.replace(/^https?:\/\//, '');
+            const wsUrl = `${wsProto}://${cleanUrl}/ws/chat?token=${token}`;
+            
+            socket = new WebSocket(wsUrl);
+
+            socket.onopen = () => {
+                console.log("WebSocket connected successfully.");
+                // Start pinging
+                setInterval(() => {
+                    if (socket.readyState === WebSocket.OPEN) {
+                        socket.send(JSON.stringify({ type: "ping" }));
+                    }
+                }, 15000);
+            };
+
+            socket.onmessage = async (event) => {
                 const data = JSON.parse(event.data);
-                if (data.type === "message") {
-                    appendMessage(data);
-                } else if (data.type === "typing") {
-                    if (data.sender_id === chatPartner?.id) {
+
+                if (data.type === "pong") return;
+
+                if (data.type === "presence_list") {
+                    const online = data.online_users.includes(targetOperator?.id);
+                    updatePresence(online);
+                    return;
+                }
+
+                if (data.type === "presence") {
+                    if (data.user_id === targetOperator?.id) {
+                        updatePresence(data.status === "online");
+                    }
+                    return;
+                }
+
+                if (data.type === "typing") {
+                    if (data.sender_id === targetOperator?.id) {
                         if (data.is_typing) {
                             typingIndicator.classList.remove('hidden');
+                            typingIndicator.innerText = i18n[currentLang].agent_typing;
                         } else {
                             typingIndicator.classList.add('hidden');
                         }
                     }
+                    return;
+                }
+
+                if (data.type === "message" || data.content) {
+                    // Append message
+                    appendMessage(data);
+                    scrollToBottom();
+
+                    // Send read receipt if active
+                    if (targetOperator && data.sender_id === targetOperator.id) {
+                        sendRead(targetOperator.id);
+                    }
+                    return;
+                }
+
+                // --- WebRTC Signaling ---
+                if (data.type === "call_user") {
+                    handleCallIncoming(data.offer, data.sender_id);
+                    return;
+                }
+                if (data.type === "answer_call") {
+                    handleCallAnswered(data.answer);
+                    return;
+                }
+                if (data.type === "ice_candidate") {
+                    handleIceCandidate(data.candidate);
+                    return;
+                }
+                if (data.type === "hangup") {
+                    handleCallHangup();
+                    return;
                 }
             };
 
-            ws.onclose = () => {
+            socket.onclose = () => {
+                updatePresence(false);
                 setTimeout(connectWebSocket, 3000);
             };
         }
 
-        function sendMessage() {
-            const content = messageInput.value.trim();
-            if (!content || !ws || !chatPartner) return;
-
-            const clientMsgId = `msg-${Date.now()}-${Math.random().toString(36).substr(2, 9)}`;
-            const payload = {
-                type: "message",
-                receiver_id: chatPartner.id,
-                content: content,
-                msgType: "text",
-                client_msg_id: clientMsgId
-            };
-
-            ws.send(JSON.stringify(payload));
-            appendMessage({
-                sender_id: currentUser.id,
-                receiver_id: chatPartner.id,
-                content: content
-            });
-            messageInput.value = '';
+        function updatePresence(isOnline) {
+            const statusIndicator = document.getElementById('status-indicator');
+            if (isOnline) {
+                statusIndicator.classList.remove('bg-gray-400');
+                statusIndicator.classList.add('bg-green-500');
+            } else {
+                statusIndicator.classList.remove('bg-green-500');
+                statusIndicator.classList.add('bg-gray-400');
+            }
+            updateStatusText();
         }
 
-        // Onboards
-        startBtn.addEventListener('click', () => {
-            const name = usernameInput.value;
-            initGuestSession(name || null);
+        // Send Text Message
+        function sendTextMessage() {
+            const input = document.getElementById('input-message');
+            const text = input.value.trim();
+            if (!text || !targetOperator) return;
+
+            const clientMsgId = `msg-${Date.now()}-${Math.random().toString(36).substr(2, 9)}`;
+            
+            socket.send(JSON.stringify({
+                type: "message",
+                receiver_id: targetOperator.id,
+                content: text,
+                msgType: "text",
+                client_msg_id: clientMsgId
+            }));
+
+            input.value = '';
+        }
+
+        // Send read notification
+        function sendRead(senderId) {
+            if (socket && socket.readyState === WebSocket.OPEN) {
+                socket.send(JSON.stringify({
+                    type: "read",
+                    sender_id: senderId
+                }));
+            }
+        }
+
+        // Handle File Upload
+        async function handleFileUpload(event) {
+            const file = event.target.files[0];
+            if (!file || !targetOperator) return;
+
+            const formData = new FormData();
+            formData.append('file', file);
+
+            try {
+                const res = await fetch(`${backendUrl}/api/upload`, {
+                    method: 'POST',
+                    body: formData
+                });
+
+                if (!res.ok) throw new Error("Upload failed");
+                const data = await res.json();
+
+                let msgType = "text";
+                if (data.type.startsWith("image/")) msgType = "image";
+                else if (data.type.startsWith("video/")) msgType = "video";
+                else if (data.type.startsWith("audio/")) msgType = "audio";
+
+                const clientMsgId = `msg-${Date.now()}-${Math.random().toString(36).substr(2, 9)}`;
+                
+                socket.send(JSON.stringify({
+                    type: "message",
+                    receiver_id: targetOperator.id,
+                    content: data.file_url,
+                    msgType: msgType,
+                    client_msg_id: clientMsgId
+                }));
+
+            } catch (err) {
+                alert(i18n[currentLang].file_error);
+            }
+        }
+
+        // Append message to DOM
+        function appendMessage(msg) {
+            const isMe = msg.sender_id === currentUser?.id;
+            const msgRow = document.createElement('div');
+            msgRow.className = `flex w-full ${isMe ? 'justify-end' : 'justify-start'}`;
+
+            const bubble = document.createElement('div');
+            bubble.className = `p-3 max-w-[75%] rounded-2xl shadow-sm text-sm ${
+                isMe ? 'bg-primary-600 text-white rounded-br-none' : 'bg-white text-gray-800 border rounded-bl-none'
+            }`;
+
+            // Render content by message type
+            if (msg.message_type === "image") {
+                const img = document.createElement('img');
+                img.src = `${backendUrl}${msg.content}`;
+                img.className = 'max-w-xs rounded-lg shadow-sm';
+                bubble.appendChild(img);
+            } else if (msg.message_type === "video") {
+                const video = document.createElement('video');
+                video.src = `${backendUrl}${msg.content}`;
+                video.controls = true;
+                video.className = 'max-w-xs rounded-lg shadow-sm';
+                bubble.appendChild(video);
+            } else if (msg.message_type === "audio") {
+                const audio = document.createElement('audio');
+                audio.src = `${backendUrl}${msg.content}`;
+                audio.controls = true;
+                audio.className = 'w-48';
+                bubble.appendChild(audio);
+            } else {
+                const span = document.createElement('span');
+                span.innerText = msg.content;
+                span.className = 'break-all';
+                bubble.appendChild(span);
+            }
+
+            // Time and Ticks
+            const meta = document.createElement('div');
+            meta.className = `flex items-center justify-end gap-1 mt-1 text-[10px] ${isMe ? 'text-primary-200' : 'text-gray-400'}`;
+            
+            const time = document.createElement('span');
+            time.innerText = new Date(msg.timestamp || Date.now()).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' });
+            meta.appendChild(time);
+
+            if (isMe) {
+                const ticks = document.createElement('span');
+                if (msg.is_read) {
+                    ticks.innerText = '✓✓';
+                    ticks.className = 'text-blue-200 font-bold';
+                } else if (msg.is_delivered) {
+                    ticks.innerText = '✓✓';
+                    ticks.className = 'text-gray-300 font-bold';
+                } else {
+                    ticks.innerText = '✓';
+                    ticks.className = 'text-gray-400';
+                }
+                meta.appendChild(ticks);
+            }
+
+            bubble.appendChild(meta);
+            msgRow.appendChild(bubble);
+            messagesContainer.appendChild(msgRow);
+        }
+
+        function scrollToBottom() {
+            messagesContainer.scrollTop = messagesContainer.scrollHeight;
+        }
+
+        // Typing notifier
+        let typingTimeout = null;
+        document.getElementById('input-message').addEventListener('input', () => {
+            if (!targetOperator || !socket || socket.readyState !== WebSocket.OPEN) return;
+
+            socket.send(JSON.stringify({
+                type: "typing",
+                receiver_id: targetOperator.id,
+                is_typing: true
+            }));
+
+            if (typingTimeout) clearTimeout(typingTimeout);
+            typingTimeout = setTimeout(() => {
+                socket.send(JSON.stringify({
+                    type: "typing",
+                    receiver_id: targetOperator.id,
+                    is_typing: false
+                }));
+            }, 1500);
         });
 
-        guestBtn.addEventListener('click', () => {
-            initGuestSession(null);
+        // Enter key to send
+        document.getElementById('input-message').addEventListener('keypress', (e) => {
+            if (e.key === 'Enter') {
+                sendTextMessage();
+            }
         });
 
-        sendBtn.addEventListener('click', sendMessage);
-        messageInput.addEventListener('keypress', (e) => {
-            if (e.key === 'Enter') sendMessage();
-        });
+        // Initialize Onboarding
+        onboardGuest();
+
+
+        // ==========================================
+        // ========== WebRTC SIGNALING LOGIC ========
+        // ==========================================
+
+        document.getElementById('btn-call').addEventListener('click', startVideoCall);
+
+        async function startVideoCall() {
+            if (!targetOperator) return;
+
+            document.getElementById('call-overlay').classList.remove('hidden');
+            document.getElementById('call-title').innerText = targetOperator.username;
+            document.getElementById('call-status').innerText = i18n[currentLang].calling;
+
+            document.getElementById('btn-accept-call').classList.add('hidden');
+
+            try {
+                localStream = await navigator.mediaDevices.getUserMedia({ video: true, audio: true });
+                document.getElementById('local-video').srcObject = localStream;
+
+                rtcConnection = new RTCPeerConnection(iceConfiguration);
+                
+                localStream.getTracks().forEach(track => {
+                    rtcConnection.addTrack(track, localStream);
+                });
+
+                rtcConnection.onicecandidate = (event) => {
+                    if (event.candidate && socket && socket.readyState === WebSocket.OPEN) {
+                        socket.send(JSON.stringify({
+                            type: "ice_candidate",
+                            receiver_id: targetOperator.id,
+                            candidate: event.candidate
+                        }));
+                    }
+                };
+
+                rtcConnection.ontrack = (event) => {
+                    document.getElementById('remote-video').srcObject = event.streams[0];
+                };
+
+                const offer = await rtcConnection.createOffer();
+                await rtcConnection.setLocalDescription(offer);
+
+                socket.send(JSON.stringify({
+                    type: "call_user",
+                    receiver_id: targetOperator.id,
+                    offer: offer
+                }));
+
+            } catch (err) {
+                console.error("Error starting video call:", err);
+                hangupCall();
+            }
+        }
+
+        function handleCallIncoming(offer, senderId) {
+            pendingOffer = offer;
+            document.getElementById('call-overlay').classList.remove('hidden');
+            document.getElementById('call-title').innerText = targetOperator ? targetOperator.username : "Support";
+            document.getElementById('call-status').innerText = i18n[currentLang].incoming_call;
+
+            document.getElementById('btn-accept-call').classList.remove('hidden');
+        }
+
+        async function acceptCall() {
+            if (!pendingOffer || !targetOperator) return;
+
+            document.getElementById('btn-accept-call').classList.add('hidden');
+            document.getElementById('call-status').innerText = "Connecting...";
+
+            try {
+                localStream = await navigator.mediaDevices.getUserMedia({ video: true, audio: true });
+                document.getElementById('local-video').srcObject = localStream;
+
+                rtcConnection = new RTCPeerConnection(iceConfiguration);
+
+                localStream.getTracks().forEach(track => {
+                    rtcConnection.addTrack(track, localStream);
+                });
+
+                rtcConnection.onicecandidate = (event) => {
+                    if (event.candidate && socket && socket.readyState === WebSocket.OPEN) {
+                        socket.send(JSON.stringify({
+                            type: "ice_candidate",
+                            receiver_id: targetOperator.id,
+                            candidate: event.candidate
+                        }));
+                    }
+                };
+
+                rtcConnection.ontrack = (event) => {
+                    document.getElementById('remote-video').srcObject = event.streams[0];
+                };
+
+                await rtcConnection.setRemoteDescription(new RTCSessionDescription(pendingOffer));
+                
+                const answer = await rtcConnection.createAnswer();
+                await rtcConnection.setLocalDescription(answer);
+
+                socket.send(JSON.stringify({
+                    type: "answer_call",
+                    receiver_id: targetOperator.id,
+                    answer: answer
+                }));
+
+                document.getElementById('call-status').innerText = "Connected";
+                pendingOffer = null;
+
+            } catch (err) {
+                console.error("Error accepting call:", err);
+                hangupCall();
+            }
+        }
+
+        async function handleCallAnswered(answer) {
+            if (!rtcConnection) return;
+            try {
+                await rtcConnection.setRemoteDescription(new RTCSessionDescription(answer));
+                document.getElementById('call-status').innerText = "Connected";
+            } catch (err) {
+                console.error("Error setting call answer:", err);
+            }
+        }
+
+        function handleIceCandidate(candidate) {
+            if (!rtcConnection) return;
+            try {
+                rtcConnection.addIceCandidate(new RTCIceCandidate(candidate));
+            } catch (err) {
+                console.error("Error adding ice candidate:", err);
+            }
+        }
+
+        function hangupCall() {
+            if (socket && socket.readyState === WebSocket.OPEN && targetOperator) {
+                socket.send(JSON.stringify({
+                    type: "hangup",
+                    receiver_id: targetOperator.id
+                }));
+            }
+            handleCallHangup();
+        }
+
+        function handleCallHangup() {
+            if (localStream) {
+                localStream.getTracks().forEach(track => track.stop());
+                localStream = null;
+            }
+            if (rtcConnection) {
+                rtcConnection.close();
+                rtcConnection = null;
+            }
+
+            document.getElementById('local-video').srcObject = null;
+            document.getElementById('remote-video').srcObject = null;
+            document.getElementById('call-overlay').classList.add('hidden');
+            pendingOffer = null;
+        }
+
     </script>
 </body>
 </html>

@@ -29,10 +29,18 @@ export function parseJwt(token: string) {
 interface ChatState {
   token: string | null;
   currentUser: { id: number; username: string } | null;
-  selectedUser: { id: number; username: string } | null;
+  selectedUser: { id: number; username: string; is_guest?: boolean; workspace_id?: number } | null;
   messages: Message[];
   onlineUsers: number[];
   typingUsers: { [userId: number]: boolean };
+  // WebRTC Video Calling State
+  callState: "idle" | "calling" | "incoming" | "connected";
+  callPartner: { id: number; username: string } | null;
+  incomingOffer: any | null;
+  setCallState: (state: "idle" | "calling" | "incoming" | "connected") => void;
+  setCallPartner: (partner: { id: number; username: string } | null) => void;
+  setIncomingOffer: (offer: any | null) => void;
+  resetCall: () => void;
   setToken: (token: string | null) => void;
   setCurrentUser: (user: any) => void;
   setSelectedUser: (user: any) => void;
@@ -60,6 +68,13 @@ export const useChatStore = create<ChatState>((set) => ({
   messages: [],
   onlineUsers: [],
   typingUsers: {},
+  callState: "idle",
+  callPartner: null,
+  incomingOffer: null,
+  setCallState: (state) => set({ callState: state }),
+  setCallPartner: (partner) => set({ callPartner: partner }),
+  setIncomingOffer: (offer) => set({ incomingOffer: offer }),
+  resetCall: () => set({ callState: "idle", callPartner: null, incomingOffer: null }),
   setToken: (token) => {
     if (token) {
       localStorage.setItem("chat_token", token);
