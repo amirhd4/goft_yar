@@ -1,228 +1,182 @@
-import { useEffect, useRef } from "react";
-import { useChatStore } from "../store/useChatStore";
+import { useEffect, useRef } from 'react';
+import { useChatStore } from '../store/useChatStore';
+
+// Dynamic base URL detection for flexible local and production development
+const getApiBaseUrl = () => {
+    return window.location.protocol + "//" + window.location.hostname + (window.location.port ? ":" + window.location.port : "");
+};
+
+const API_BASE_URL = getApiBaseUrl();
 
 export const useWebSocket = () => {
-    const ws = useRef<WebSocket | null>(null);
-    const {
-        token,
-        addMessage,
-        setOnlineUsers,
-        addUserPresence,
-        removeUserPresence,
-        setUserTyping,
-        markMessagesAsRead,
-        markMessagesAsDelivered
-    } = useChatStore();
+  const {
+    token,
+    addMessage,
+    setMessages,
+    setOnlineUsers,
+    setTypingUser,
+    setCallState,
+    setCallPartner,
+    setIncomingOffer
+  } = useChatStore();
 
-    const pingIntervalRef = useRef<any>(null);
-    const reconnectTimeoutRef = useRef<any>(null);
+  const socketRef = useRef<WebSocket | null>(null);
 
-    const connect = () => {
-        if (!token) return;
+  useEffect(() => {
+    if (!token) {
+      if (socketRef.current) {
+        socketRef.current.close();
+        socketRef.current = null;
+      }
+      return;
+    }
 
-        // Clean up previous socket if any
-        if (ws.current) {
-            ws.current.close();
-        }
+    const wsProto = window.location.protocol === 'https:' ? 'wss' : 'ws';
+    const cleanUrl = API_BASE_URL.replace(/^https?:\/\//, '');
+    const wsUrl = `${wsProto}://${cleanUrl}/ws/chat?token=${token}`;
 
-        const socketUrl = `ws://localhost:8000/ws/chat?token=${token}`;
-        const socket = new WebSocket(socketUrl);
-        ws.current = socket;
+    const ws = new WebSocket(wsUrl);
+    socketRef.current = ws;
 
-        socket.onopen = () => {
-            console.log("WebSocket connected successfully.");
+    ws.onmessage = (event) => {
+      const data = JSON.parse(event.data);
 
-            // Start heartbeat ping every 15 seconds to keep connection alive
-            pingIntervalRef.current = setInterval(() => {
-                if (socket.readyState === WebSocket.OPEN) {
-                    socket.send(JSON.stringify({ type: "ping" }));
-                }
-            }, 15000);
-        };
-
-        socket.onmessage = (event: MessageEvent<any>) => {
-            try {
-                const data = JSON.parse(event.data);
-
-                if (data.type === "pong") {
-                    return;
-                }
-
-                if (data.type === "presence_list") {
-                    setOnlineUsers(data.online_users);
-                    return;
-                }
-
-                if (data.type === "presence") {
-                    if (data.status === "online") {
-                        addUserPresence(data.user_id);
-                    } else {
-                        removeUserPresence(data.user_id);
-                    }
-                    return;
-                }
-
-                if (data.type === "typing") {
-                    setUserTyping(data.sender_id, data.is_typing);
-                    return;
-                }
-
-                if (data.type === "read") {
-                    markMessagesAsRead(data.receiver_id, data.receiver_id);
-                    return;
-                }
-
-                if (data.type === "delivered_receipt") {
-                    markMessagesAsDelivered(data.receiver_id);
-                    return;
-                }
-
-                // WebRTC Signaling
-                if (data.type === "call_user") {
-                    useChatStore.getState().setCallPartner({ id: data.sender_id, username: `User #${data.sender_id}` });
-                    useChatStore.getState().setIncomingOffer(data.offer);
-                    useChatStore.getState().setCallState("incoming");
-                    return;
-                }
-
-                if (data.type === "answer_call" || data.type === "ice_candidate" || data.type === "hangup") {
-                    window.dispatchEvent(new CustomEvent("webrtc_event", { detail: data }));
-                    return;
-                }
-
-                if (data.type === "message" || data.content) {
-                    addMessage({
-                        id: data.id,
-                        sender_id: data.sender_id,
-                        receiver_id: data.receiver_id,
-                        content: data.content,
-                        message_type: data.message_type || "text",
-                        client_msg_id: data.client_msg_id,
-                        is_delivered: data.is_delivered,
-                        is_read: data.is_read,
-                        timestamp: data.timestamp
-                    });
-                }
-            } catch (err) {
-                console.error("Error parsing WebSocket message:", err);
-            }
-        };
-
-        socket.onclose = () => {
-            console.log("WebSocket closed. Attempting reconnect in 3 seconds...");
-            cleanup();
-            reconnectTimeoutRef.current = setTimeout(() => {
-                connect();
-            }, 3000);
-        };
-
-        socket.onerror = (err) => {
-            console.error("WebSocket encountered an error:", err);
-            socket.close();
-        };
-    };
-
-    const cleanup = () => {
-        if (pingIntervalRef.current) {
-            clearInterval(pingIntervalRef.current);
-            pingIntervalRef.current = null;
-        }
-        if (reconnectTimeoutRef.current) {
-            clearTimeout(reconnectTimeoutRef.current);
-            reconnectTimeoutRef.current = null;
-        }
-    };
-
-    useEffect(() => {
-        connect();
-
-        return () => {
-            cleanup();
-            if (ws.current) {
-                ws.current.onclose = null;
-                ws.current.close();
-                ws.current = null;
-            }
-        };
-    }, [token]);
-
-    const sendMessage = (
-        receiver_id: number,
-        content: string,
-        msgType: "text" | "image" | "video" | "audio" | null,
-        client_msg_id?: string
-    ) => {
-        if (ws.current && ws.current.readyState === WebSocket.OPEN) {
-            const uniqueId = client_msg_id || `msg-${Date.now()}-${Math.random().toString(36).substr(2, 9)}`;
-            ws.current.send(JSON.stringify({
-                type: "message",
-                receiver_id,
-                content,
-                msgType: msgType || "text",
-                client_msg_id: uniqueId
-            }));
+      if (data.type === 'presence_list') {
+        setOnlineUsers(data.online_users);
+      } else if (data.type === 'presence') {
+        // Multi-user presence tracking: dynamically modify online state array
+        const currentOnline = useChatStore.getState().onlineUsers;
+        if (data.status === 'online') {
+          if (!currentOnline.includes(data.user_id)) {
+            setOnlineUsers([...currentOnline, data.user_id]);
+          }
         } else {
-            console.warn("WebSocket is not open. Unable to send message.");
+          setOnlineUsers(currentOnline.filter(id => id !== data.user_id));
         }
+      } else if (data.type === 'typing') {
+        setTypingUser(data.sender_id, data.is_typing);
+      } else if (data.type === 'read') {
+        // Correct read receipt update without losing chat history
+        const currentMsgs = useChatStore.getState().messages;
+        const updated = currentMsgs.map(m => {
+          if (m.receiver_id === data.receiver_id) {
+            return { ...m, is_read: true };
+          }
+          return m;
+        });
+        setMessages(updated);
+      } else if (data.type === 'delivered_receipt') {
+        // Correct delivery receipt update without losing chat history
+        const currentMsgs = useChatStore.getState().messages;
+        const updated = currentMsgs.map(m => {
+          if (m.receiver_id === data.receiver_id) {
+            return { ...m, is_delivered: true };
+          }
+          return m;
+        });
+        setMessages(updated);
+      } else if (data.type === 'message') {
+        addMessage(data);
+      } else if (['call_user', 'answer_call', 'ice_candidate', 'hangup'].includes(data.type)) {
+        // Handle Call events
+        if (data.type === 'call_user') {
+          setCallState('incoming');
+          setCallPartner({ id: data.sender_id, username: 'User ' + data.sender_id, is_guest: false });
+          setIncomingOffer(data.offer);
+        } else {
+          // Dispatch custom event to let ChatDashboard component WebRTC layer handle it
+          const event = new CustomEvent('webrtc_event', { detail: data });
+          window.dispatchEvent(event);
+        }
+      }
     };
 
-    const sendTyping = (receiver_id: number, is_typing: boolean) => {
-        if (ws.current && ws.current.readyState === WebSocket.OPEN) {
-            ws.current.send(JSON.stringify({
-                type: "typing",
-                receiver_id,
-                is_typing
-            }));
-        }
+    ws.onclose = () => {
+      console.log('WebSocket closed. Reconnecting...');
     };
 
-    const sendRead = (sender_id: number) => {
-        if (ws.current && ws.current.readyState === WebSocket.OPEN) {
-            ws.current.send(JSON.stringify({
-                type: "read",
-                sender_id
-            }));
-        }
+    return () => {
+      ws.close();
     };
+  }, [token]);
 
-    const sendCallOffer = (receiver_id: number, offer: any) => {
-        if (ws.current && ws.current.readyState === WebSocket.OPEN) {
-            ws.current.send(JSON.stringify({
-                type: "call_user",
-                receiver_id,
-                offer
-            }));
-        }
-    };
+  const sendMessage = (receiverId: number, content: string, messageType: string = 'text', clientMsgId?: string) => {
+    if (socketRef.current && socketRef.current.readyState === WebSocket.OPEN) {
+      socketRef.current.send(JSON.stringify({
+        receiver_id: receiverId,
+        content,
+        message_type: messageType,
+        client_msg_id: clientMsgId
+      }));
+    }
+  };
 
-    const sendCallAnswer = (receiver_id: number, answer: any) => {
-        if (ws.current && ws.current.readyState === WebSocket.OPEN) {
-            ws.current.send(JSON.stringify({
-                type: "answer_call",
-                receiver_id,
-                answer
-            }));
-        }
-    };
+  const sendTyping = (receiverId: number, isTyping: boolean) => {
+    if (socketRef.current && socketRef.current.readyState === WebSocket.OPEN) {
+      socketRef.current.send(JSON.stringify({
+        type: 'typing',
+        receiver_id: receiverId,
+        is_typing: isTyping
+      }));
+    }
+  };
 
-    const sendIceCandidate = (receiver_id: number, candidate: any) => {
-        if (ws.current && ws.current.readyState === WebSocket.OPEN) {
-            ws.current.send(JSON.stringify({
-                type: "ice_candidate",
-                receiver_id,
-                candidate
-            }));
-        }
-    };
+  const sendRead = (senderId: number) => {
+    if (socketRef.current && socketRef.current.readyState === WebSocket.OPEN) {
+      socketRef.current.send(JSON.stringify({
+        type: 'read',
+        sender_id: senderId
+      }));
+    }
+  };
 
-    const sendHangup = (receiver_id: number) => {
-        if (ws.current && ws.current.readyState === WebSocket.OPEN) {
-            ws.current.send(JSON.stringify({
-                type: "hangup",
-                receiver_id
-            }));
-        }
-    };
+  const sendCallOffer = (receiverId: number, offer: any) => {
+    if (socketRef.current && socketRef.current.readyState === WebSocket.OPEN) {
+      socketRef.current.send(JSON.stringify({
+        type: 'call_user',
+        receiver_id: receiverId,
+        offer
+      }));
+    }
+  };
 
-    return { sendMessage, sendTyping, sendRead, sendCallOffer, sendCallAnswer, sendIceCandidate, sendHangup };
+  const sendCallAnswer = (receiverId: number, answer: any) => {
+    if (socketRef.current && socketRef.current.readyState === WebSocket.OPEN) {
+      socketRef.current.send(JSON.stringify({
+        type: 'answer_call',
+        receiver_id: receiverId,
+        answer
+      }));
+    }
+  };
+
+  const sendIceCandidate = (receiverId: number, candidate: any) => {
+    if (socketRef.current && socketRef.current.readyState === WebSocket.OPEN) {
+      socketRef.current.send(JSON.stringify({
+        type: 'ice_candidate',
+        receiver_id: receiverId,
+        candidate
+      }));
+    }
+  };
+
+  const sendHangup = (receiverId: number) => {
+    if (socketRef.current && socketRef.current.readyState === WebSocket.OPEN) {
+      socketRef.current.send(JSON.stringify({
+        type: 'hangup',
+        receiver_id: receiverId
+      }));
+    }
+  };
+
+  return {
+    sendMessage,
+    sendTyping,
+    sendRead,
+    sendCallOffer,
+    sendCallAnswer,
+    sendIceCandidate,
+    sendHangup
+  };
 };
+export default useWebSocket;

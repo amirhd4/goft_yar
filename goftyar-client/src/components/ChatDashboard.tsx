@@ -3,7 +3,7 @@ import { useTranslation } from "react-i18next";
 import { useChatStore } from "../store/useChatStore.ts";
 import { useWebSocket } from "../hooks/useWebSocket.ts";
 import axios from "axios";
-import { Paperclip, Mic, Send, LogOut, Video, Phone, PhoneOff, Copy, Check } from "lucide-react";
+import { Paperclip, Mic, Send, LogOut, Video, Phone, PhoneOff, Copy, Check, Settings, Trash2, Plus, Edit3, Sparkles } from "lucide-react";
 import LanguageSwitcher from "./LanguageSwitcher";
 
 const iceConfiguration = {
@@ -12,6 +12,13 @@ const iceConfiguration = {
         { urls: "stun:stun1.l.google.com:19302" }
     ]
 };
+
+// Dynamic base URL detection for flexible local and production development
+const getApiBaseUrl = () => {
+    return window.location.protocol + "//" + window.location.hostname + (window.location.port ? ":" + window.location.port : "");
+};
+
+const API_BASE_URL = getApiBaseUrl();
 
 const ChatDashboard = () => {
     const { t, i18n } = useTranslation();
@@ -49,7 +56,17 @@ const ChatDashboard = () => {
     // Workspace state
     const [workspace, setWorkspace] = useState<any>(null);
     const [wsNameInput, setWsNameInput] = useState("");
-    const [copiedScript, setCopiedScript] = useState(false);
+    const [copiedScript, setCopiedScript] = useState<string | null>(null);
+
+    // Dynamic Widgets State
+    const [widgets, setWidgets] = useState<any[]>([]);
+    const [widgetName, setWidgetName] = useState("");
+    const [widgetThemeColor, setWidgetThemeColor] = useState("#2563eb");
+    const [widgetAllowedDomains, setWidgetAllowedDomains] = useState("*");
+    const [widgetIsAiActive, setWidgetIsAiActive] = useState(false);
+    const [selectedAgentIds, setSelectedAgentIds] = useState<number[]>([]);
+    const [editingWidgetId, setEditingWidgetId] = useState<number | null>(null);
+    const [showWidgetForm, setShowWidgetForm] = useState(false);
 
     // WebRTC connection refs
     const localVideoRef = useRef<HTMLVideoElement>(null);
@@ -78,7 +95,7 @@ const ChatDashboard = () => {
     // Fetch workspace details
     const fetchWorkspace = () => {
         if (token) {
-            axios.get("http://localhost:8000/api/auth/workspaces/my", {
+            axios.get(`${API_BASE_URL}/api/auth/workspaces/my`, {
                 headers: { Authorization: `Bearer ${token}` }
             }).then(res => {
                 setWorkspace(res.data);
@@ -89,7 +106,7 @@ const ChatDashboard = () => {
     // Fetch initial users list
     const fetchUsers = () => {
         if (token) {
-            axios.get("http://localhost:8000/api/auth/users", {
+            axios.get(`${API_BASE_URL}/api/auth/users`, {
                 headers: { Authorization: `Bearer ${token}` }
             }).then(res => {
                 const currentUserId = currentUser?.id;
@@ -99,17 +116,29 @@ const ChatDashboard = () => {
         }
     };
 
+    // Fetch workspace widgets
+    const fetchWidgets = () => {
+        if (token) {
+            axios.get(`${API_BASE_URL}/api/widgets`, {
+                headers: { Authorization: `Bearer ${token}` }
+            }).then(res => {
+                setWidgets(res.data);
+            }).catch(err => console.error("Error fetching widgets:", err));
+        }
+    };
+
     useEffect(() => {
         if (token) {
             fetchWorkspace();
             fetchUsers();
+            fetchWidgets();
         }
     }, [currentUser, token]);
 
     // Fetch chat history
     useEffect(() => {
         if (selectedUser && token && currentUser) {
-            axios.get(`http://localhost:8000/api/messages/${selectedUser.id}`, {
+            axios.get(`${API_BASE_URL}/api/messages/${selectedUser.id}`, {
                 params: { current_user_id: currentUser.id }
             }).then(res => {
                 setMessages(res.data);
@@ -131,7 +160,7 @@ const ChatDashboard = () => {
     // Create a new Workspace
     const handleCreateWorkspace = () => {
         if (!wsNameInput.trim() || !token) return;
-        axios.post("http://localhost:8000/api/auth/workspaces", {
+        axios.post(`${API_BASE_URL}/api/auth/workspaces`, {
             name: wsNameInput
         }, {
             headers: { Authorization: `Bearer ${token}` }
@@ -139,15 +168,75 @@ const ChatDashboard = () => {
             setWorkspace(res.data);
             setWsNameInput("");
             fetchUsers();
+            fetchWidgets();
         }).catch(err => console.error("Error creating workspace:", err));
     };
 
-    const handleCopyScript = () => {
-        if (!workspace) return;
-        const scriptText = `<script src="http://localhost:8000/static/widget.js" data-api-key="${workspace.api_key}"></script>`;
+    // Save/Create Widget
+    const handleSaveWidget = () => {
+        if (!widgetName.trim() || !token) return;
+
+        const widgetPayload = {
+            name: widgetName,
+            theme_color: widgetThemeColor,
+            allowed_domains: widgetAllowedDomains,
+            is_ai_active: widgetIsAiActive,
+            agent_ids: selectedAgentIds
+        };
+
+        if (editingWidgetId) {
+            axios.put(`${API_BASE_URL}/api/widgets/${editingWidgetId}`, widgetPayload, {
+                headers: { Authorization: `Bearer ${token}` }
+            }).then(() => {
+                fetchWidgets();
+                resetWidgetForm();
+            }).catch(err => console.error("Error updating widget:", err));
+        } else {
+            axios.post(`${API_BASE_URL}/api/widgets`, widgetPayload, {
+                headers: { Authorization: `Bearer ${token}` }
+            }).then(() => {
+                fetchWidgets();
+                resetWidgetForm();
+            }).catch(err => console.error("Error creating widget:", err));
+        }
+    };
+
+    // Edit widget trigger
+    const startEditWidget = (widget: any) => {
+        setEditingWidgetId(widget.id);
+        setWidgetName(widget.name);
+        setWidgetThemeColor(widget.theme_color);
+        setWidgetAllowedDomains(widget.allowed_domains);
+        setWidgetIsAiActive(widget.is_ai_active);
+        setSelectedAgentIds(widget.agents.map((a: any) => a.id));
+        setShowWidgetForm(true);
+    };
+
+    // Delete widget
+    const handleDeleteWidget = (widgetId: number) => {
+        if (!window.confirm(t('confirm_delete') || "آیا از حذف این ویجت مطمئن هستید؟")) return;
+        axios.delete(`${API_BASE_URL}/api/widgets/${widgetId}`, {
+            headers: { Authorization: `Bearer ${token}` }
+        }).then(() => {
+            fetchWidgets();
+        }).catch(err => console.error("Error deleting widget:", err));
+    };
+
+    const resetWidgetForm = () => {
+        setEditingWidgetId(null);
+        setWidgetName("");
+        setWidgetThemeColor("#2563eb");
+        setWidgetAllowedDomains("*");
+        setWidgetIsAiActive(false);
+        setSelectedAgentIds([]);
+        setShowWidgetForm(false);
+    };
+
+    const handleCopyScript = (widget: any) => {
+        const scriptText = `<script src="${API_BASE_URL}/static/widget.js" data-api-key="${workspace.api_key}" data-backend-url="${API_BASE_URL}"></script>`;
         navigator.clipboard.writeText(scriptText);
-        setCopiedScript(true);
-        setTimeout(() => setCopiedScript(false), 2000);
+        setCopiedScript(widget.id.toString());
+        setTimeout(() => setCopiedScript(null), 2000);
     };
 
     const handleInputChange = (val: string) => {
@@ -170,7 +259,7 @@ const ChatDashboard = () => {
         formData.append("file", file);
 
         try {
-            const res = await axios.post("http://localhost:8000/api/upload", formData, {
+            const res = await axios.post(`${API_BASE_URL}/api/upload`, formData, {
                 headers: { "Content-Type": "multipart/form-data" }
             });
 
@@ -189,14 +278,41 @@ const ChatDashboard = () => {
         }
     };
 
+    // Format Message DateTime
+    const formatTimestamp = (isoStr: string) => {
+        const d = new Date(isoStr);
+        try {
+            if (isRtl) {
+                return new Intl.DateTimeFormat('fa-IR', {
+                    hour: '2-digit',
+                    minute: '2-digit',
+                    second: '2-digit',
+                    year: 'numeric',
+                    month: 'long',
+                    day: 'numeric'
+                }).format(d);
+            } else {
+                return d.toLocaleDateString('en-US', {
+                    year: 'numeric',
+                    month: 'short',
+                    day: 'numeric',
+                    hour: '2-digit',
+                    minute: '2-digit'
+                });
+            }
+        } catch (e) {
+            return d.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' });
+        }
+    };
+
     const renderMessageContent = (msg: any) => {
         switch (msg.message_type) {
             case "image":
-                return <img src={`http://localhost:8000${msg.content}`} alt={t("image") || "تصویر"} className="max-w-xs rounded-lg shadow-sm" />;
+                return <img src={`${API_BASE_URL}${msg.content}`} alt={t("image") || "تصویر"} className="max-w-xs rounded-lg shadow-sm" />;
             case "video":
-                return <video src={`http://localhost:8000${msg.content}`} controls className="max-w-xs rounded-lg shadow-sm" />;
+                return <video src={`${API_BASE_URL}${msg.content}`} controls className="max-w-xs rounded-lg shadow-sm" />;
             case "audio":
-                return <audio src={`http://localhost:8000${msg.content}`} controls className="w-64" />;
+                return <audio src={`${API_BASE_URL}${msg.content}`} controls className="w-64" />;
             default:
                 return <span className="text-[15px] leading-relaxed break-words">{msg.content}</span>;
         }
@@ -411,12 +527,21 @@ const ChatDashboard = () => {
         }
     };
 
+    // Toggle Agent selection for a widget
+    const toggleAgentSelection = (agentId: number) => {
+        if (selectedAgentIds.includes(agentId)) {
+            setSelectedAgentIds(selectedAgentIds.filter(id => id !== agentId));
+        } else {
+            setSelectedAgentIds([...selectedAgentIds, agentId]);
+        }
+    };
+
 
     return (
         <div className="flex h-screen bg-gray-100" dir={isRtl ? "rtl" : "ltr"}>
             {/* Sidebar */}
             <div className={`w-1/3 bg-white ${isRtl ? "border-l" : "border-r"} border-gray-200 flex flex-col p-4 overflow-hidden shadow-sm`}>
-                <div className="flex items-center justify-between mb-6 pb-2 border-b gap-2">
+                <div className="flex items-center justify-between mb-4 pb-2 border-b gap-2">
                     <div className="min-w-0">
                         <h2 className="text-xl font-bold text-gray-800">{t('chat')}</h2>
                         {currentUser && (
@@ -446,18 +571,18 @@ const ChatDashboard = () => {
                             <div
                                 key={u.id}
                                 onClick={() => setSelectedUser(u)}
-                                className={`p-3.5 rounded-xl cursor-pointer transition-all duration-200 flex items-center justify-between ${
+                                className={`p-3 rounded-xl cursor-pointer transition-all duration-200 flex items-center justify-between ${
                                     selectedUser?.id === u.id
                                         ? 'bg-blue-600 text-white shadow-md transform scale-[1.01]'
-                                        : 'bg-gray-50 hover:bg-gray-150 text-gray-700'
+                                        : 'bg-gray-50 hover:bg-gray-100 text-gray-700'
                                 }`}
                             >
                                 <div className="flex flex-col min-w-0">
-                                    <span className="font-semibold text-[15px] truncate">
+                                    <span className="font-semibold text-sm truncate">
                                         {u.username} {u.is_guest ? <span className="text-xs font-normal opacity-85">({t('widget')})</span> : ""}
                                     </span>
                                     {typing ? (
-                                        <span className={`text-xs mt-0.5 animate-pulse truncate ${selectedUser?.id === u.id ? 'text-blue-100' : 'text-blue-500 font-medium'}`}>
+                                        <span className={`text-xs mt-0.5 truncate ${selectedUser?.id === u.id ? 'text-blue-100' : 'text-blue-500 font-medium'}`}>
                                             {t('typing')}
                                         </span>
                                     ) : null}
@@ -465,7 +590,7 @@ const ChatDashboard = () => {
 
                                 <div className="flex items-center gap-2 shrink-0">
                                     {online ? (
-                                        <span className="h-2.5 w-2.5 rounded-full bg-green-500 shadow-sm animate-pulse" title={t('online') || 'آنلاین'} />
+                                        <span className="h-2.5 w-2.5 rounded-full bg-green-500 shadow-sm" title={t('online') || 'آنلاین'} />
                                     ) : (
                                         <span className="h-2.5 w-2.5 rounded-full bg-gray-300" title={t('offline') || 'آفلاین'} />
                                     )}
@@ -475,13 +600,14 @@ const ChatDashboard = () => {
                     })}
                 </div>
 
-                {/* Workspace Settings Section */}
-                <div className="border-t pt-4 bg-white mt-auto">
+                {/* Workspace & Widget Settings Section */}
+                <div className="border-t pt-3 bg-white mt-auto overflow-y-auto max-h-[50%] scrollbar-thin">
                     <h3 className="text-sm font-bold text-gray-700 mb-2 flex items-center gap-2">
-                        {t('workspace_title')}
+                        <Settings size={16} />
+                        <span>{t('workspace_title')}</span>
                     </h3>
                     {workspace ? (
-                        <div className="bg-gray-50 p-3 rounded-xl space-y-2 text-xs">
+                        <div className="bg-gray-50 p-3 rounded-xl space-y-3 text-xs">
                             <div className="flex justify-between items-center">
                                 <span className="text-gray-500 font-medium">{t('workspace_name')}:</span>
                                 <span className="font-bold text-gray-800">{workspace.name}</span>
@@ -492,15 +618,165 @@ const ChatDashboard = () => {
                                     {workspace.api_key}
                                 </code>
                             </div>
-                            <div className="space-y-1 pt-1 border-t">
-                                <span className="text-gray-500 font-medium block">{t('widget_script')}:</span>
-                                <button
-                                    onClick={handleCopyScript}
-                                    className="w-full flex items-center justify-center gap-1 bg-blue-600 hover:bg-blue-700 text-white font-semibold py-1.5 px-3 rounded transition shadow-sm"
-                                >
-                                    {copiedScript ? <Check size={14} /> : <Copy size={14} />}
-                                    <span>{copiedScript ? t('copied') : t('copy_script')}</span>
-                                </button>
+
+                            {/* Dynamic Widgets Management */}
+                            <div className="border-t pt-3 space-y-2">
+                                <div className="flex items-center justify-between">
+                                    <span className="text-gray-700 font-bold">{t('widgets_list') || 'لیست ویجت‌ها'}</span>
+                                    <button
+                                        onClick={() => setShowWidgetForm(!showWidgetForm)}
+                                        className="bg-blue-100 hover:bg-blue-200 text-blue-700 p-1 rounded transition-colors"
+                                        title={t('add_widget') || 'افزودن ویجت'}
+                                    >
+                                        <Plus size={16} />
+                                    </button>
+                                </div>
+
+                                {/* Widget Create/Update Form */}
+                                {showWidgetForm && (
+                                    <div className="bg-white p-3 rounded-lg border border-gray-200 space-y-2 mt-2">
+                                        <div>
+                                            <label className="text-gray-500 font-medium block mb-1">{t('widget_name') || 'نام ویجت'}</label>
+                                            <input
+                                                type="text"
+                                                value={widgetName}
+                                                onChange={e => setWidgetName(e.target.value)}
+                                                className="w-full border rounded p-1 text-xs outline-none focus:border-blue-500"
+                                            />
+                                        </div>
+                                        <div className="flex items-center gap-2 justify-between">
+                                            <div>
+                                                <label className="text-gray-500 font-medium block mb-1">{t('theme_color') || 'رنگ قالب'}</label>
+                                                <input
+                                                    type="color"
+                                                    value={widgetThemeColor}
+                                                    onChange={e => setWidgetThemeColor(e.target.value)}
+                                                    className="w-10 h-6 border rounded cursor-pointer"
+                                                />
+                                            </div>
+                                            <div className="flex items-center gap-1.5 mt-4 bg-gray-50 p-1.5 rounded border">
+                                                <input
+                                                    type="checkbox"
+                                                    id="ai-toggle"
+                                                    checked={widgetIsAiActive}
+                                                    onChange={e => setWidgetIsAiActive(e.target.checked)}
+                                                    className="rounded border-gray-300 text-blue-600 focus:ring-blue-500"
+                                                />
+                                                <label htmlFor="ai-toggle" className="text-gray-600 font-bold flex items-center gap-1 cursor-pointer select-none">
+                                                    <Sparkles size={12} className="text-yellow-500" />
+                                                    <span>{t('ai_assistant') || 'دستیار هوش مصنوعی'}</span>
+                                                </label>
+                                            </div>
+                                        </div>
+                                        <div>
+                                            <label className="text-gray-500 font-medium block mb-1">{t('allowed_domains') || 'دامنه‌های مجاز'}</label>
+                                            <input
+                                                type="text"
+                                                value={widgetAllowedDomains}
+                                                onChange={e => setWidgetAllowedDomains(e.target.value)}
+                                                className="w-full border rounded p-1 text-xs outline-none focus:border-blue-500"
+                                                placeholder="* or example.com, test.org"
+                                            />
+                                        </div>
+
+                                        {/* Agent Assignments */}
+                                        <div>
+                                            <label className="text-gray-500 font-medium block mb-1">{t('assign_agents') || 'انتساب اپراتورها'}</label>
+                                            <div className="border rounded max-h-24 overflow-y-auto p-1.5 space-y-1 bg-gray-50">
+                                                {users.filter(u => !u.is_guest).map(u => (
+                                                    <label key={u.id} className="flex items-center gap-1.5 cursor-pointer text-[11px] hover:bg-gray-100 p-0.5 rounded">
+                                                        <input
+                                                            type="checkbox"
+                                                            checked={selectedAgentIds.includes(u.id)}
+                                                            onChange={() => toggleAgentSelection(u.id)}
+                                                            className="rounded text-blue-600"
+                                                        />
+                                                        <span>{u.username}</span>
+                                                    </label>
+                                                ))}
+                                                {users.filter(u => !u.is_guest).length === 0 && (
+                                                    <span className="text-gray-400 italic text-[10px] block">{t('no_operators') || 'اپراتور دیگری ثبت نشده است.'}</span>
+                                                )}
+                                            </div>
+                                        </div>
+
+                                        <div className="flex items-center gap-2 pt-1">
+                                            <button
+                                                onClick={handleSaveWidget}
+                                                className="flex-1 bg-blue-600 hover:bg-blue-700 text-white font-bold py-1 rounded text-xs transition"
+                                            >
+                                                {t('save') || 'ذخیره'}
+                                            </button>
+                                            <button
+                                                onClick={resetWidgetForm}
+                                                className="flex-1 bg-gray-200 hover:bg-gray-300 text-gray-700 py-1 rounded text-xs transition"
+                                            >
+                                                {t('cancel') || 'لغو'}
+                                            </button>
+                                        </div>
+                                    </div>
+                                )}
+
+                                {/* Widgets List Display */}
+                                <div className="space-y-2 max-h-40 overflow-y-auto">
+                                    {widgets.map(w => (
+                                        <div key={w.id} className="bg-white p-2.5 rounded-lg border border-gray-200 flex flex-col gap-1.5 shadow-sm">
+                                            <div className="flex items-center justify-between">
+                                                <span className="font-bold text-gray-800 text-[11px]">{w.name}</span>
+                                                <div className="flex items-center gap-1">
+                                                    <button
+                                                        onClick={() => startEditWidget(w)}
+                                                        className="text-gray-400 hover:text-blue-600 p-0.5 rounded"
+                                                        title={t('edit') || 'ویرایش'}
+                                                    >
+                                                        <Edit3 size={12} />
+                                                    </button>
+                                                    <button
+                                                        onClick={() => handleDeleteWidget(w.id)}
+                                                        className="text-gray-400 hover:text-red-600 p-0.5 rounded"
+                                                        title={t('delete') || 'حذف'}
+                                                    >
+                                                        <Trash2 size={12} />
+                                                    </button>
+                                                </div>
+                                            </div>
+                                            <div className="flex items-center justify-between text-[10px] text-gray-500">
+                                                <div className="flex items-center gap-1">
+                                                    <span className="w-2.5 h-2.5 rounded-full border border-gray-300" style={{ backgroundColor: w.theme_color }} />
+                                                    <span>{w.theme_color}</span>
+                                                </div>
+                                                {w.is_ai_active && (
+                                                    <span className="text-yellow-600 font-bold bg-yellow-50 px-1 rounded flex items-center gap-0.5">
+                                                        <Sparkles size={8} />
+                                                        <span>AI Active</span>
+                                                    </span>
+                                                )}
+                                            </div>
+
+                                            {/* Assigned Agents tags */}
+                                            {w.agents && w.agents.length > 0 && (
+                                                <div className="flex flex-wrap gap-1 mt-0.5">
+                                                    {w.agents.map((a: any) => (
+                                                        <span key={a.id} className="bg-blue-50 text-blue-700 text-[9px] px-1 rounded">
+                                                            {a.username}
+                                                        </span>
+                                                    ))}
+                                                </div>
+                                            )}
+
+                                            <button
+                                                onClick={() => handleCopyScript(w)}
+                                                className="w-full flex items-center justify-center gap-1 bg-gray-100 hover:bg-blue-50 border text-gray-700 hover:text-blue-700 font-medium py-1 px-2 rounded text-[10px] transition mt-1"
+                                            >
+                                                {copiedScript === w.id.toString() ? <Check size={12} /> : <Copy size={12} />}
+                                                <span>{copiedScript === w.id.toString() ? t('copied') : t('copy_script')}</span>
+                                            </button>
+                                        </div>
+                                    ))}
+                                    {widgets.length === 0 && (
+                                        <span className="text-gray-400 italic block text-center py-2">{t('no_widgets') || 'هیچ ویجتی یافت نشد.'}</span>
+                                    )}
+                                </div>
                             </div>
                         </div>
                     ) : (
@@ -575,16 +851,13 @@ const ChatDashboard = () => {
                                                     : `bg-white text-gray-800 ${isRtl ? 'rounded-tr-none' : 'rounded-tl-none'} border border-gray-100`
                                             }`}
                                         >
-                                            <div className="pb-1 text-right-align">
+                                            <div className="pb-1 text-right-align" style={{ wordBreak: 'break-all', whiteSpace: 'pre-wrap' }}>
                                                 {renderMessageContent(msg)}
                                             </div>
 
                                             <div className={`flex items-center justify-end gap-1 mt-1.5 text-[10px] ${isMe ? 'text-blue-200' : 'text-gray-400'}`}>
                                                 <span>
-                                                    {new Date(msg.timestamp || Date.now()).toLocaleTimeString([], {
-                                                        hour: "2-digit",
-                                                        minute: "2-digit"
-                                                    })}
+                                                    {formatTimestamp(msg.timestamp)}
                                                 </span>
                                                 {renderTicks(msg)}
                                             </div>

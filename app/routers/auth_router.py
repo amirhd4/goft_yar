@@ -162,6 +162,30 @@ async def get_workspace_operators(
     if not ws:
         raise HTTPException(status_code=400, detail="Invalid API Key")
 
+    # Load widgets for this workspace to check if any specific agents are assigned
+    from app.models import Widget
+    from sqlalchemy.orm import selectinload
+
+    widget_res = await db.execute(
+        select(Widget)
+        .where(Widget.workspace_id == ws.id)
+        .options(selectinload(Widget.agents))
+    )
+    widgets = widget_res.scalars().all()
+
+    assigned_agent_ids = set()
+    for widget in widgets:
+        for agent in widget.agents:
+            assigned_agent_ids.add(agent.id)
+
+    if assigned_agent_ids:
+        # If there are agents assigned specifically to any of the widgets, routing assigns them
+        res = await db.execute(
+            select(User).where(User.id.in_(assigned_agent_ids), User.is_guest == False)
+        )
+        return res.scalars().all()
+
+    # Fallback to all operators in workspace
     res = await db.execute(
         select(User).where(User.workspace_id == ws.id, User.is_guest == False)
     )

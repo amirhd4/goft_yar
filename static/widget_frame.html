@@ -101,6 +101,7 @@
             
             // Re-render strings if necessary
             updateStatusText();
+            loadChatHistory(); // reload to reformat timestamps
         }
     </script>
 
@@ -108,24 +109,24 @@
     <div class="flex-1 flex flex-col h-full bg-white relative">
         
         <!-- Header -->
-        <div class="bg-primary-600 text-white p-4 shadow-md flex items-center justify-between z-10">
+        <div id="widget-header" class="bg-primary-600 text-white p-4 shadow-md flex items-center justify-between z-10">
             <div class="flex items-center gap-3">
                 <div class="relative">
-                    <div class="w-10 h-10 rounded-full bg-primary-100 flex items-center justify-center text-primary-600 font-bold text-lg" id="agent-avatar">
+                    <div class="w-10 h-10 rounded-full bg-white/20 flex items-center justify-center text-white font-bold text-lg" id="agent-avatar">
                         P
                     </div>
                     <span class="absolute bottom-0 right-0 block h-2.5 w-2.5 rounded-full bg-gray-400 ring-2 ring-white" id="status-indicator"></span>
                 </div>
                 <div>
                     <h1 class="font-bold text-sm" id="widget-title">گفتگو با پشتیبانی</h1>
-                    <span class="text-xs text-primary-100 block" id="agent-status">پشت خط</span>
+                    <span class="text-xs text-white/80 block" id="agent-status">پشت خط</span>
                 </div>
             </div>
 
             <!-- Header Actions -->
             <div class="flex items-center gap-2">
                 <!-- Video Call Action -->
-                <button id="btn-call" class="hover:bg-primary-700 p-2 rounded-full transition-colors hidden" title="تماس تصویری">
+                <button id="btn-call" class="hover:bg-white/10 p-2 rounded-full transition-colors hidden" title="تماس تصویری">
                     <svg xmlns="http://www.w3.org/2000/svg" width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" class="lucide lucide-video">
                         <path d="m22 8-6 4 6 4V8Z"/>
                         <rect width="14" height="12" x="2" y="6" rx="2" ry="2"/>
@@ -133,7 +134,7 @@
                 </button>
 
                 <!-- Language Switcher -->
-                <select id="lang-select" onchange="updateLanguage(this.value)" class="bg-primary-700 text-white text-xs border-none rounded p-1.5 focus:ring-1 focus:ring-white">
+                <select id="lang-select" onchange="updateLanguage(this.value)" class="bg-black/20 text-white text-xs border-none rounded p-1.5 focus:ring-1 focus:ring-white">
                     <option value="fa" selected>FA</option>
                     <option value="en">EN</option>
                 </select>
@@ -153,7 +154,7 @@
         <!-- Input Area -->
         <div class="p-3 border-t bg-white flex items-center gap-2">
             <!-- Attachment Button -->
-            <button onclick="document.getElementById('file-input').click()" class="text-gray-400 hover:text-primary-600 p-1.5 rounded-full hover:bg-gray-100 transition" title="ارسال فایل">
+            <button onclick="document.getElementById('file-input').click()" class="text-gray-400 hover:text-gray-600 p-1.5 rounded-full hover:bg-gray-100 transition" title="ارسال فایل">
                 <svg xmlns="http://www.w3.org/2000/svg" width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" class="lucide lucide-paperclip">
                     <path d="m21.44 11.05-9.19 9.19a6 6 0 0 1-8.49-8.49l9.19-9.19a4 4 0 0 1 5.66 5.66l-9.2 9.19a2 2 0 0 1-2.83-2.83l8.49-8.48"/>
                 </svg>
@@ -161,10 +162,10 @@
             <input type="file" id="file-input" class="hidden" accept="image/*,video/*,audio/*" onchange="handleFileUpload(event)">
 
             <!-- Text Input -->
-            <input type="text" id="input-message" placeholder="پیام خود را بنویسید..." class="flex-1 border-none bg-gray-100 rounded-full px-4 py-2.5 text-sm focus:outline-none focus:ring-1 focus:ring-primary-400">
+            <input type="text" id="input-message" placeholder="پیام خود را بنویسید..." class="flex-1 border-none bg-gray-100 rounded-full px-4 py-2.5 text-sm focus:outline-none focus:ring-1 focus:ring-gray-300">
 
             <!-- Send Button -->
-            <button id="btn-send" onclick="sendTextMessage()" class="bg-primary-600 text-white p-2.5 rounded-full hover:bg-primary-700 transition shadow-sm">
+            <button id="btn-send" onclick="sendTextMessage()" class="bg-primary-600 text-white p-2.5 rounded-full hover:opacity-90 transition shadow-sm">
                 <svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" class="lucide lucide-send">
                     <path d="m22 2-7 20-4-9-9-4Z"/>
                     <path d="M22 2 11 13"/>
@@ -218,6 +219,11 @@
         const apiKey = urlParams.get('api_key');
         const defaultBackendUrl = window.location.origin;
         const backendUrl = urlParams.get('backend_url') || defaultBackendUrl;
+        const customColor = urlParams.get('theme_color') || '#2563eb';
+
+        // Apply custom colors to Header and buttons dynamically
+        document.getElementById('widget-header').style.backgroundColor = customColor;
+        document.getElementById('btn-send').style.backgroundColor = customColor;
 
         let token = null;
         let currentUser = null;
@@ -495,6 +501,34 @@
             }
         }
 
+        // Dual-Calendar Timestamp formatter (Jalali for fa, Gregorian for en)
+        function formatTimestamp(isoStr) {
+            const d = new Date(isoStr);
+            try {
+                if (currentLang === 'fa') {
+                    // Native Shamsi formatter
+                    return new Intl.DateTimeFormat('fa-IR', {
+                        hour: '2-digit',
+                        minute: '2-digit',
+                        second: '2-digit',
+                        year: 'numeric',
+                        month: 'long',
+                        day: 'numeric'
+                    }).format(d);
+                } else {
+                    return d.toLocaleDateString('en-US', {
+                        year: 'numeric',
+                        month: 'short',
+                        day: 'numeric',
+                        hour: '2-digit',
+                        minute: '2-digit'
+                    });
+                }
+            } catch(e) {
+                return d.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' });
+            }
+        }
+
         // Append message to DOM
         function appendMessage(msg) {
             const isMe = msg.sender_id === currentUser?.id;
@@ -503,8 +537,14 @@
 
             const bubble = document.createElement('div');
             bubble.className = `p-3 max-w-[75%] rounded-2xl shadow-sm text-sm ${
-                isMe ? 'bg-primary-600 text-white rounded-br-none' : 'bg-white text-gray-800 border rounded-bl-none'
+                isMe ? 'text-white rounded-br-none' : 'bg-white text-gray-800 border rounded-bl-none'
             }`;
+            bubble.style.wordBreak = 'break-all';
+            bubble.style.whiteSpace = 'pre-wrap';
+
+            if (isMe) {
+                bubble.style.backgroundColor = customColor;
+            }
 
             // Render content by message type
             if (msg.message_type === "image") {
@@ -527,29 +567,29 @@
             } else {
                 const span = document.createElement('span');
                 span.innerText = msg.content;
-                span.className = 'break-all';
+                span.className = 'break-all whitespace-pre-wrap';
                 bubble.appendChild(span);
             }
 
             // Time and Ticks
             const meta = document.createElement('div');
-            meta.className = `flex items-center justify-end gap-1 mt-1 text-[10px] ${isMe ? 'text-primary-200' : 'text-gray-400'}`;
+            meta.className = `flex items-center justify-end gap-1 mt-1 text-[10px] ${isMe ? 'text-white/80' : 'text-gray-400'}`;
             
             const time = document.createElement('span');
-            time.innerText = new Date(msg.timestamp || Date.now()).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' });
+            time.innerText = formatTimestamp(msg.timestamp || Date.now());
             meta.appendChild(time);
 
             if (isMe) {
                 const ticks = document.createElement('span');
                 if (msg.is_read) {
                     ticks.innerText = '✓✓';
-                    ticks.className = 'text-blue-200 font-bold';
+                    ticks.className = 'text-white font-bold';
                 } else if (msg.is_delivered) {
                     ticks.innerText = '✓✓';
-                    ticks.className = 'text-gray-300 font-bold';
+                    ticks.className = 'text-white/60 font-bold';
                 } else {
                     ticks.innerText = '✓';
-                    ticks.className = 'text-gray-400';
+                    ticks.className = 'text-white/40';
                 }
                 meta.appendChild(ticks);
             }
@@ -560,7 +600,9 @@
         }
 
         function scrollToBottom() {
-            messagesContainer.scrollTop = messagesContainer.scrollHeight;
+            setTimeout(() => {
+                messagesContainer.scrollTop = messagesContainer.scrollHeight;
+            }, 50);
         }
 
         // Typing notifier
