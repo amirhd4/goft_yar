@@ -9,6 +9,7 @@ from jose import jwt, JWTError
 from sqlalchemy import or_, and_, select, update
 from sqlalchemy.ext.asyncio import AsyncSession
 
+import asyncio
 from app.auth import SECRET_KEY, ALGORITHM
 from app.connection_manager import manager
 from app.database import AsyncSessionLocal, get_db
@@ -221,6 +222,21 @@ async def websocket_chat(websocket: WebSocket, token: str = Query(...)):
             await manager.send_to_user(receiver_id, payload_to_send)
             await manager.send_personal_message(payload_to_send, websocket)
 
+            async with AsyncSessionLocal() as db:
+                from app.models import User, Widget
+                sender_res = await db.execute(select(User).where(User.id == user_id))
+                sender_user = sender_res.scalars().first()
+                if sender_user and sender_user.is_guest and sender_user.workspace_id:
+                    # get workspace widget
+                    widget_res = await db.execute(
+                        select(Widget).where(Widget.workspace_id == sender_user.workspace_id)
+                    )
+                    widget = widget_res.scalars().first()
+                    if widget and widget.is_ai_active:
+                        asyncio.create_task(
+                            handle_ai_auto_response(user_id, username, receiver_id, content, db_message.id)
+                        )
+
     except WebSocketDisconnect:
         await manager.disconnect(user_id)
         await manager.broadcast({
@@ -236,6 +252,76 @@ async def websocket_chat(websocket: WebSocket, token: str = Query(...)):
             "user_id": user_id,
             "status": "offline"
         })
+
+
+async def handle_ai_auto_response(guest_id: int, guest_username: str, operator_id: int, guest_message: str, db_msg_id: int):
+    await asyncio.sleep(2)
+
+    await manager.send_to_user(guest_id, {
+        "type": "typing",
+        "sender_id": operator_id,
+        "is_typing": True
+    })
+
+    await asyncio.sleep(2)
+
+    rtl_chars = set("ابپتثجچحخدذرزژسشصضطظعغفقکگلمنوهی")
+    is_persian = any(char in rtl_chars for char in guest_message)
+
+    if is_persian:
+        ai_responses = [
+            "سلام! من دستیار هوشمند گفت‌یار هستم. چطور می‌توانم به شما کمک کنم؟ 😊",
+            "پیام شما دریافت شد. در حال حاضر اپراتورهای ما مشغول هستند؛ من آماده پاسخگویی به سوالات شما هستم.",
+            "ممنون از پیام شما. لطفاً منتظر بمانید تا همکاران ما به شما متصل شوند، یا اگر سوالی دارید همینجا بپرسید.",
+            "خوشحالم که با ما ارتباط برقرار کردید. برای راهنمایی دقیق‌تر لطفا جزئیات بیشتری ارسال فرمایید."
+        ]
+    else:
+        ai_responses = [
+            "Hello! I am the Goftyar AI assistant. How can I help you today? 😊",
+            "Your message has been received. Our agents are currently busy, but I'm here to assist you in the meantime.",
+            "Thank you for reaching out! Please wait a moment while I connect you to an agent, or ask me any questions.",
+            "Great to chat with you! Please let me know if you need any specific information."
+        ]
+
+    content = ai_responses[db_msg_id % len(ai_responses)]
+
+    await manager.send_to_user(guest_id, {
+        "type": "typing",
+        "sender_id": operator_id,
+        "is_typing": False
+    })
+
+    async with AsyncSessionLocal() as db:
+        ai_msg_id = f"ai-{uuid.uuid4().hex}"
+        db_message = Message(
+            sender_id=operator_id,
+            receiver_id=guest_id,
+            content=content,
+            message_type="text",
+            client_msg_id=ai_msg_id,
+            is_delivered=True,
+            is_read=False
+        )
+        db.add(db_message)
+        await db.commit()
+        await db.refresh(db_message)
+
+        payload_to_send = {
+            "type": "message",
+            "id": db_message.id,
+            "sender_id": operator_id,
+            "sender_username": "AI Assistant",
+            "receiver_id": guest_id,
+            "content": content,
+            "message_type": "text",
+            "client_msg_id": ai_msg_id,
+            "is_delivered": True,
+            "is_read": False,
+            "timestamp": db_message.timestamp.isoformat()
+        }
+
+    await manager.send_to_user(guest_id, payload_to_send)
+    await manager.send_to_user(operator_id, payload_to_send)
 
 
 UPLOAD_DIR = "uploads"

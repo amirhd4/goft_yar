@@ -1,128 +1,120 @@
-import { create } from "zustand";
+import { create } from 'zustand';
 
-export interface Message {
+interface User {
+  id: number;
+  username: string;
+  is_guest: boolean;
+  workspace_id?: number | null;
+}
+
+interface Message {
   id?: number;
   sender_id: number;
   receiver_id: number;
   content: string;
-  message_type: "text" | "image" | "video" | "audio";
-  client_msg_id?: string;
-  is_delivered?: boolean;
-  is_read?: boolean;
-  timestamp?: string;
-}
-
-export function parseJwt(token: string) {
-  try {
-    const base64Url = token.split('.')[1];
-    const base64 = base64Url.replace(/-/g, '+').replace(/_/g, '/');
-    const jsonPayload = decodeURIComponent(atob(base64).split('').map(function(c) {
-        return '%' + ('00' + c.charCodeAt(0).toString(16)).slice(-2);
-    }).join(''));
-
-    return JSON.parse(jsonPayload);
-  } catch (e) {
-    return null;
-  }
+  message_type: string;
+  client_msg_id?: string | null;
+  is_delivered: boolean;
+  is_read: boolean;
+  timestamp: string;
 }
 
 interface ChatState {
   token: string | null;
-  currentUser: { id: number; username: string } | null;
-  selectedUser: { id: number; username: string; is_guest?: boolean; workspace_id?: number } | null;
+  currentUser: User | null;
+  selectedUser: User | null;
   messages: Message[];
   onlineUsers: number[];
-  typingUsers: { [userId: number]: boolean };
-  // WebRTC Video Calling State
-  callState: "idle" | "calling" | "incoming" | "connected";
-  callPartner: { id: number; username: string } | null;
+  typingUsers: Record<number, boolean>;
+  
+  // WebRTC Calling State
+  callState: 'idle' | 'calling' | 'incoming' | 'connected';
+  callPartner: User | null;
   incomingOffer: any | null;
-  setCallState: (state: "idle" | "calling" | "incoming" | "connected") => void;
-  setCallPartner: (partner: { id: number; username: string } | null) => void;
+
+  setToken: (token: string | null) => void;
+  setCurrentUser: (user: User | null) => void;
+  setSelectedUser: (user: User | null) => void;
+  setMessages: (messages: Message[]) => void;
+  addMessage: (message: Message) => void;
+  setOnlineUsers: (users: number[]) => void;
+  setTypingUser: (userId: number, isTyping: boolean) => void;
+  logout: () => void;
+
+  // WebRTC actions
+  setCallState: (state: 'idle' | 'calling' | 'incoming' | 'connected') => void;
+  setCallPartner: (partner: User | null) => void;
   setIncomingOffer: (offer: any | null) => void;
   resetCall: () => void;
-  setToken: (token: string | null) => void;
-  setCurrentUser: (user: any) => void;
-  setSelectedUser: (user: any) => void;
-  setMessages: (messages: Message[]) => void;
-  addMessage: (msg: Message) => void;
-  setOnlineUsers: (users: number[]) => void;
-  addUserPresence: (userId: number) => void;
-  removeUserPresence: (userId: number) => void;
-  setUserTyping: (userId: number, isTyping: boolean) => void;
-  markMessagesAsRead: (senderId: number, receiverId: number) => void;
-  markMessagesAsDelivered: (receiverId: number) => void;
-  logout: () => void;
 }
 
-const initialToken = localStorage.getItem("chat_token");
-const initialUser = initialToken ? (() => {
-  const payload = parseJwt(initialToken);
-  return payload ? { id: payload.user_id, username: payload.sub } : null;
-})() : null;
-
 export const useChatStore = create<ChatState>((set) => ({
-  token: initialToken,
-  currentUser: initialUser,
+  token: localStorage.getItem('token'),
+  currentUser: JSON.parse(localStorage.getItem('currentUser') || 'null'),
   selectedUser: null,
   messages: [],
   onlineUsers: [],
   typingUsers: {},
-  callState: "idle",
+  
+  callState: 'idle',
   callPartner: null,
   incomingOffer: null,
-  setCallState: (state) => set({ callState: state }),
-  setCallPartner: (partner) => set({ callPartner: partner }),
-  setIncomingOffer: (offer) => set({ incomingOffer: offer }),
-  resetCall: () => set({ callState: "idle", callPartner: null, incomingOffer: null }),
+
   setToken: (token) => {
     if (token) {
-      localStorage.setItem("chat_token", token);
-      const payload = parseJwt(token);
-      const user = payload ? { id: payload.user_id, username: payload.sub } : null;
-      set({ token, currentUser: user });
+      localStorage.setItem('token', token);
     } else {
-      localStorage.removeItem("chat_token");
-      set({ token, currentUser: null, messages: [], selectedUser: null, onlineUsers: [], typingUsers: {} });
+      localStorage.removeItem('token');
     }
+    set({ token });
   },
-  setCurrentUser: (user) => set({ currentUser: user }),
-  setSelectedUser: (user) => set({ selectedUser: user, messages: [] }),
+
+  setCurrentUser: (user) => {
+    if (user) {
+      localStorage.setItem('currentUser', JSON.stringify(user));
+    } else {
+      localStorage.removeItem('currentUser');
+    }
+    set({ currentUser: user });
+  },
+
+  setSelectedUser: (user) => set({ selectedUser: user }),
+  
   setMessages: (messages) => set({ messages }),
-  addMessage: (msg) => set((state) => {
-    if (msg.client_msg_id && state.messages.some(m => m.client_msg_id === msg.client_msg_id)) {
+  
+  addMessage: (message) => set((state) => {
+    // Prevent duplicate messages by checking client_msg_id or ID
+    const exists = state.messages.some(
+      (m) => (m.client_msg_id && m.client_msg_id === message.client_msg_id) || (m.id && m.id === message.id)
+    );
+    if (exists) {
+      // Update receipt fields if they changed
       return {
-        messages: state.messages.map(m => m.client_msg_id === msg.client_msg_id ? { ...m, id: msg.id, is_delivered: msg.is_delivered, is_read: msg.is_read } : m)
+        messages: state.messages.map((m) => {
+          if ((m.client_msg_id && m.client_msg_id === message.client_msg_id) || (m.id && m.id === message.id)) {
+            return { ...m, is_delivered: message.is_delivered, is_read: message.is_read };
+          }
+          return m;
+        })
       };
     }
-    if (msg.id && state.messages.some(m => m.id === msg.id)) {
-      return state;
-    }
-    return { messages: [...state.messages, msg] };
+    return { messages: [...state.messages, message] };
   }),
+
   setOnlineUsers: (users) => set({ onlineUsers: users }),
-  addUserPresence: (userId) => set((state) => {
-    if (state.onlineUsers.includes(userId)) return state;
-    return { onlineUsers: [...state.onlineUsers, userId] };
-  }),
-  removeUserPresence: (userId) => set((state) => ({
-    onlineUsers: state.onlineUsers.filter(id => id !== userId)
-  })),
-  setUserTyping: (userId, isTyping) => set((state) => ({
+
+  setTypingUser: (userId, isTyping) => set((state) => ({
     typingUsers: { ...state.typingUsers, [userId]: isTyping }
   })),
-  markMessagesAsRead: (senderId, receiverId) => set((state) => ({
-    messages: state.messages.map(m =>
-      (m.sender_id === senderId && m.receiver_id === receiverId) ? { ...m, is_read: true, is_delivered: true } : m
-    )
-  })),
-  markMessagesAsDelivered: (receiverId) => set((state) => ({
-    messages: state.messages.map(m =>
-      (m.receiver_id === receiverId) ? { ...m, is_delivered: true } : m
-    )
-  })),
+
   logout: () => {
-    localStorage.removeItem("chat_token");
-    set({ token: null, currentUser: null, selectedUser: null, messages: [], onlineUsers: [], typingUsers: {} });
+    localStorage.removeItem('token');
+    localStorage.removeItem('currentUser');
+    set({ token: null, currentUser: null, selectedUser: null, messages: [], onlineUsers: [] });
   },
+
+  setCallState: (callState) => set({ callState }),
+  setCallPartner: (callPartner) => set({ callPartner }),
+  setIncomingOffer: (incomingOffer) => set({ incomingOffer }),
+  resetCall: () => set({ callState: 'idle', callPartner: null, incomingOffer: null })
 }));

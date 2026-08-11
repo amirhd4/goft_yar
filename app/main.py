@@ -4,7 +4,7 @@ from fastapi.staticfiles import StaticFiles
 from fastapi.middleware.cors import CORSMiddleware
 
 from app.database import engine, Base
-from app.routers import auth_router, chat_router
+from app.routers import auth_router, chat_router, widget_router
 from app.connection_manager import manager
 
 
@@ -32,6 +32,7 @@ app.add_middleware(
 
 app.include_router(auth_router.router)
 app.include_router(chat_router.router)
+app.include_router(widget_router.router)
 
 app.mount("/static", StaticFiles(directory="static"), name="static")
 app.mount("/uploads", StaticFiles(directory="uploads"), name="uploads")

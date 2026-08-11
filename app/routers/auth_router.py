@@ -162,6 +162,27 @@ async def get_workspace_operators(
     if not ws:
         raise HTTPException(status_code=400, detail="Invalid API Key")
 
+    from app.models import Widget
+    from sqlalchemy.orm import selectinload
+
+    widget_res = await db.execute(
+        select(Widget)
+        .where(Widget.workspace_id == ws.id)
+        .options(selectinload(Widget.agents))
+    )
+    widgets = widget_res.scalars().all()
+
+    assigned_agent_ids = set()
+    for widget in widgets:
+        for agent in widget.agents:
+            assigned_agent_ids.add(agent.id)
+
+    if assigned_agent_ids:
+        res = await db.execute(
+            select(User).where(User.id.in_(assigned_agent_ids), User.is_guest == False)
+        )
+        return res.scalars().all()
+
     res = await db.execute(
         select(User).where(User.workspace_id == ws.id, User.is_guest == False)
     )
