@@ -15,6 +15,7 @@ RUN pip install --no-cache-dir -r requirements.txt
 
 # Copy backend source code
 COPY app/ app/
+COPY static/ static/
 
 # Create folders for uploads/static
 RUN mkdir -p static uploads

@@ -190,8 +190,8 @@ async def websocket_chat(websocket: WebSocket, token: str = Query(...)):
                     db_message = res.scalars().first()
 
                 if db_message is None:
-                    # Message does not exist, safe to create
-                    is_receiver_online = receiver_id in manager.active_connections
+                    online_users = await manager.get_online_users()
+                    is_receiver_online = receiver_id in online_users
                     db_message = Message(
                         sender_id=user_id,
                         receiver_id=receiver_id,

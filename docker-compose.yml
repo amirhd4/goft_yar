@@ -19,19 +19,62 @@ services:
       - "6379:6379"
     restart: always
 
-  backend:
+  auth-service:
     build:
       context: .
       dockerfile: Dockerfile
-    container_name: goftyar-backend
-    ports:
-      - "8000:8000"
+    container_name: goftyar-auth-service
+    command: uvicorn app.services.auth_service:app --host 0.0.0.0 --port 8001
+    environment:
+      - DATABASE_URL=postgresql+asyncpg://postgres:postgres@postgres:5432/goftyar
+    depends_on:
+      - postgres
+    restart: always
+
+  widget-service:
+    build:
+      context: .
+      dockerfile: Dockerfile
+    container_name: goftyar-widget-service
+    command: uvicorn app.services.widget_service:app --host 0.0.0.0 --port 8002
+    environment:
+      - DATABASE_URL=postgresql+asyncpg://postgres:postgres@postgres:5432/goftyar
+    depends_on:
+      - postgres
+    restart: always
+
+  chat-service:
+    build:
+      context: .
+      dockerfile: Dockerfile
+    container_name: goftyar-chat-service
+    command: uvicorn app.services.chat_service:app --host 0.0.0.0 --port 8003
     environment:
       - DATABASE_URL=postgresql+asyncpg://postgres:postgres@postgres:5432/goftyar
       - REDIS_URL=redis://redis:6379/0
     depends_on:
       - postgres
       - redis
+    volumes:
+      - uploads_data:/workspace/uploads
+    restart: always
+
+  gateway:
+    build:
+      context: .
+      dockerfile: Dockerfile
+    container_name: goftyar-gateway
+    command: uvicorn app.services.gateway:app --host 0.0.0.0 --port 8000
+    ports:
+      - "8000:8000"
+    environment:
+      - AUTH_SERVICE_URL=http://auth-service:8001
+      - WIDGET_SERVICE_URL=http://widget-service:8002
+      - CHAT_SERVICE_URL=http://chat-service:8003
+    depends_on:
+      - auth-service
+      - widget-service
+      - chat-service
     volumes:
       - uploads_data:/workspace/uploads
     restart: always
@@ -44,7 +87,7 @@ services:
     ports:
       - "80:80"
     depends_on:
-      - backend
+      - gateway
     restart: always
 
 volumes:

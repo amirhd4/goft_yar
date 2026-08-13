@@ -3,6 +3,10 @@ import { useChatStore } from '../store/useChatStore';
 
 // Dynamic base URL detection for flexible local and production development
 const getApiBaseUrl = () => {
+    const envUrl = import.meta.env.VITE_API_BASE_URL;
+    if (envUrl) {
+        return envUrl;
+    }
     return window.location.protocol + "//" + window.location.hostname + (window.location.port ? ":" + window.location.port : "");
 };
 
