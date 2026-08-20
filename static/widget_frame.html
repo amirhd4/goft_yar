@@ -66,6 +66,7 @@
                 audio: "Audio",
                 file_error: "Error uploading file",
                 connecting: "Connecting...",
+                connected: "Connected",
             },
             fa: {
                 title: "گفتگو با پشتیبانی",
@@ -80,11 +81,12 @@
                 accept: "پاسخ",
                 decline: "رد تماس",
                 end_call: "قطع تماس",
-                image: "نگاره پویا",
+                image: "تصویر",
                 video: "ویدیو",
                 audio: "صدا",
                 file_error: "خطا در آپلود فایل",
                 connecting: "در حال اتصال...",
+                connected: "متصل شد",
             }
         };
 
@@ -702,7 +704,7 @@
             if (!pendingOffer || !targetOperator) return;
 
             document.getElementById('btn-accept-call').classList.add('hidden');
-            document.getElementById('call-status').innerText = "Connecting...";
+            document.getElementById('call-status').innerText = i18n[currentLang].connecting;
 
             try {
                 localStream = await navigator.mediaDevices.getUserMedia({ video: true, audio: true });
@@ -739,7 +741,7 @@
                     answer: answer
                 }));
 
-                document.getElementById('call-status').innerText = "Connected";
+                document.getElementById('call-status').innerText = i18n[currentLang].connected;
                 pendingOffer = null;
 
             } catch (err) {
@@ -752,7 +754,7 @@
             if (!rtcConnection) return;
             try {
                 await rtcConnection.setRemoteDescription(new RTCSessionDescription(answer));
-                document.getElementById('call-status').innerText = "Connected";
+                document.getElementById('call-status').innerText = i18n[currentLang].connected;
             } catch (err) {
                 console.error("Error setting call answer:", err);
             }
