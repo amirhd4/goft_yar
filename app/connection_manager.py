@@ -35,7 +35,7 @@ class PubSubAdapter:
 
 class LocalPubSubAdapter(PubSubAdapter):
     """
-    Fallback in-memory PubSub for local development without Redis.
+    Fallback in-memory PubSub for local development without Redis/Kafka.
     """
 
     def __init__(self):
@@ -47,7 +47,6 @@ class LocalPubSubAdapter(PubSubAdapter):
 
     async def publish(self, message: dict):
         for cb in self.callbacks:
-            # Run callback in background task to avoid blocking
             asyncio.create_task(cb(message))
 
     async def start_listening(self, callback: Callable[[dict], None]):
@@ -145,14 +144,82 @@ class RedisPubSubAdapter(PubSubAdapter):
         return []
 
 
+class KafkaPubSubAdapter(PubSubAdapter):
+    """
+    Apache Kafka PubSub adapter for high-throughput enterprise streaming.
+    """
+
+    def __init__(self, bootstrap_servers: str, topic: str = "goftyar_pubsub_topic"):
+        self.bootstrap_servers = bootstrap_servers
+        self.topic = topic
+        self.producer = None
+        self.consumer = None
+        self.listener_task: Optional[asyncio.Task] = None
+        self.group_id = f"goftyar_group_{uuid.uuid4().hex[:8]}"
+
+    async def connect(self):
+        from aiokafka import AIOKafkaProducer, AIOKafkaConsumer
+        self.producer = AIOKafkaProducer(bootstrap_servers=self.bootstrap_servers)
+        await self.producer.start()
+
+        self.consumer = AIOKafkaConsumer(
+            self.topic,
+            bootstrap_servers=self.bootstrap_servers,
+            group_id=self.group_id,
+            auto_offset_reset="latest"
+        )
+        await self.consumer.start()
+        logger.info(f"Connected to Kafka at {self.bootstrap_servers} for PubSub.")
+
+    async def publish(self, message: dict):
+        if self.producer:
+            data = json.dumps(message).encode("utf-8")
+            await self.producer.send_and_wait(self.topic, data)
+
+    async def start_listening(self, callback: Callable[[dict], None]):
+        async def listen():
+            try:
+                async for msg in self.consumer:
+                    try:
+                        data = json.loads(msg.value.decode("utf-8"))
+                        await callback(data)
+                    except Exception as e:
+                        logger.error(f"Error parsing Kafka message: {e}")
+            except asyncio.CancelledError:
+                pass
+            except Exception as e:
+                logger.error(f"Kafka PubSub listener error: {e}")
+
+        self.listener_task = asyncio.create_task(listen())
+
+    async def disconnect(self):
+        if self.listener_task:
+            self.listener_task.cancel()
+            try:
+                await self.listener_task
+            except asyncio.CancelledError:
+                pass
+        if self.consumer:
+            await self.consumer.stop()
+        if self.producer:
+            await self.producer.stop()
+
+
 class ConnectionManager:
     def __init__(self):
         self.active_connections: Dict[int, WebSocket] = {}
         self.instance_id = str(uuid.uuid4())
 
+        adapter_type = os.getenv("PUBSUB_ADAPTER", "").lower()
+        kafka_servers = os.getenv("KAFKA_BOOTSTRAP_SERVERS", os.getenv("KAFKA_URL"))
         redis_url = os.getenv("REDIS_URL")
-        if redis_url:
-            self.pubsub_adapter: PubSubAdapter = RedisPubSubAdapter(redis_url)
+
+        if adapter_type == "kafka" or (not adapter_type and kafka_servers):
+            servers = kafka_servers or "localhost:9092"
+            self.pubsub_adapter: PubSubAdapter = KafkaPubSubAdapter(servers)
+        elif adapter_type == "redis" or (not adapter_type and redis_url):
+            url = redis_url or "redis://localhost:6379/0"
+            self.pubsub_adapter = RedisPubSubAdapter(url)
         else:
             self.pubsub_adapter = LocalPubSubAdapter()
 
@@ -161,7 +228,7 @@ class ConnectionManager:
             await self.pubsub_adapter.connect()
             await self.pubsub_adapter.start_listening(self._handle_pubsub_message)
         except Exception as e:
-            logger.warning(f"Failed to connect to Redis. Falling back to local in-memory PubSub. Error: {e}")
+            logger.warning(f"Failed to connect to primary PubSub adapter ({type(self.pubsub_adapter).__name__}). Falling back to local in-memory PubSub. Error: {e}")
             self.pubsub_adapter = LocalPubSubAdapter()
             await self.pubsub_adapter.connect()
             await self.pubsub_adapter.start_listening(self._handle_pubsub_message)

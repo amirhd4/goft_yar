@@ -19,6 +19,30 @@ services:
       - "6379:6379"
     restart: always
 
+  zookeeper:
+    image: confluentinc/cp-zookeeper:7.5.0
+    container_name: goftyar-zookeeper
+    environment:
+      ZOOKEEPER_CLIENT_PORT: 2181
+      ZOOKEEPER_TICK_TIME: 2000
+    ports:
+      - "2181:2181"
+    restart: always
+
+  kafka:
+    image: confluentinc/cp-kafka:7.5.0
+    container_name: goftyar-kafka
+    depends_on:
+      - zookeeper
+    ports:
+      - "9092:9092"
+    environment:
+      KAFKA_BROKER_ID: 1
+      KAFKA_ZOOKEEPER_CONNECT: zookeeper:2181
+      KAFKA_ADVERTISED_LISTENERS: PLAINTEXT://kafka:9092
+      KAFKA_OFFSETS_TOPIC_REPLICATION_FACTOR: 1
+    restart: always
+
   auth-service:
     build:
       context: .
@@ -51,10 +75,13 @@ services:
     command: uvicorn app.services.chat_service:app --host 0.0.0.0 --port 8003
     environment:
       - DATABASE_URL=postgresql+asyncpg://postgres:postgres@postgres:5432/goftyar
+      - PUBSUB_ADAPTER=${PUBSUB_ADAPTER:-redis}
       - REDIS_URL=redis://redis:6379/0
+      - KAFKA_BOOTSTRAP_SERVERS=kafka:9092
     depends_on:
       - postgres
       - redis
+      - kafka
     volumes:
       - uploads_data:/workspace/uploads
     restart: always

@@ -1,3 +1,4 @@
+import os
 import pytest
 import pytest_asyncio
 import asyncio
@@ -7,7 +8,12 @@ from fastapi.testclient import TestClient
 from app.database import engine, Base
 from app.main import app as main_app
 from app.services.gateway import app as gateway_app
-from app.connection_manager import ConnectionManager
+from app.connection_manager import (
+    ConnectionManager,
+    LocalPubSubAdapter,
+    RedisPubSubAdapter,
+    KafkaPubSubAdapter
+)
 
 
 @pytest_asyncio.fixture(autouse=True)
@@ -143,6 +149,29 @@ async def test_connection_manager_and_pubsub():
     await cm.disconnect(101)
     online_users_after = await cm.get_online_users()
     assert 101 not in online_users_after
+
+
+@pytest.mark.asyncio
+async def test_pubsub_adapter_selection_and_fallback():
+    # 1. Test Local Adapter Selection
+    os.environ["PUBSUB_ADAPTER"] = "local"
+    cm_local = ConnectionManager()
+    assert isinstance(cm_local.pubsub_adapter, LocalPubSubAdapter)
+    await cm_local.init_pubsub()
+    assert isinstance(cm_local.pubsub_adapter, LocalPubSubAdapter)
+
+    # 2. Test Kafka Adapter Selection & Graceful Fallback on Connection Failure
+    os.environ["PUBSUB_ADAPTER"] = "kafka"
+    os.environ["KAFKA_BOOTSTRAP_SERVERS"] = "localhost:9099" # invalid port to test fallback
+    cm_kafka = ConnectionManager()
+    assert isinstance(cm_kafka.pubsub_adapter, KafkaPubSubAdapter)
+    await cm_kafka.init_pubsub()
+    # Should fall back to LocalPubSubAdapter gracefully
+    assert isinstance(cm_kafka.pubsub_adapter, LocalPubSubAdapter)
+
+    # Clean up environment variables
+    os.environ.pop("PUBSUB_ADAPTER", None)
+    os.environ.pop("KAFKA_BOOTSTRAP_SERVERS", None)
 
 
 @pytest.mark.asyncio
