@@ -1,0 +1,40 @@
+services:
+  auth-service:
+    command: uvicorn app.services.auth_service:app --host 0.0.0.0 --port 8001 --reload
+    ports:
+      - "8001:8001"
+    environment:
+      - ENVIRONMENT=development
+      - LOG_LEVEL=debug
+    volumes:
+      - ./app:/workspace/app
+
+  widget-service:
+    command: uvicorn app.services.widget_service:app --host 0.0.0.0 --port 8002 --reload
+    ports:
+      - "8002:8002"
+    environment:
+      - ENVIRONMENT=development
+      - LOG_LEVEL=debug
+    volumes:
+      - ./app:/workspace/app
+
+  chat-service:
+    command: uvicorn app.services.chat_service:app --host 0.0.0.0 --port 8003 --reload
+    ports:
+      - "8003:8003"
+    environment:
+      - ENVIRONMENT=development
+      - LOG_LEVEL=debug
+    volumes:
+      - ./app:/workspace/app
+      - uploads_data:/workspace/uploads
+
+  gateway:
+    command: uvicorn app.services.gateway:app --host 0.0.0.0 --port 8000 --reload
+    environment:
+      - ENVIRONMENT=development
+      - LOG_LEVEL=debug
+    volumes:
+      - ./app:/workspace/app
+      - uploads_data:/workspace/uploads

@@ -30,6 +30,10 @@ app.add_middleware(
 
 app.include_router(chat_router.router)
 
+@app.get("/health")
+async def health_check():
+    return {"status": "ok", "service": "chat_service"}
+
 UPLOAD_DIR = "uploads"
 os.makedirs(UPLOAD_DIR, exist_ok=True)
 app.mount("/uploads", StaticFiles(directory=UPLOAD_DIR), name="uploads")
