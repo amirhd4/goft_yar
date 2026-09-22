@@ -4,6 +4,10 @@ import { useState } from "react";
 import axios from "axios";
 
 const getApiBaseUrl = () => {
+    const envUrl = import.meta.env.VITE_API_BASE_URL;
+    if (envUrl) {
+        return envUrl;
+    }
     return window.location.protocol + "//" + window.location.hostname + (window.location.port ? ":" + window.location.port : "");
 };
 

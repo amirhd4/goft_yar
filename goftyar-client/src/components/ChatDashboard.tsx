@@ -32,8 +32,10 @@ const ChatDashboard = () => {
         setSelectedUser,
         messages,
         setMessages,
+        prependMessages,
         onlineUsers,
         typingUsers,
+        rateLimitError,
         logout,
         callState,
         callPartner,
@@ -84,6 +86,13 @@ const ChatDashboard = () => {
     const fileInputRef = useRef<HTMLInputElement>(null);
     const typingTimeoutRef = useRef<any>(null);
     const messagesEndRef = useRef<HTMLDivElement>(null);
+    const messagesContainerRef = useRef<HTMLDivElement>(null);
+
+    // Cursor Pagination States
+    const [hasMore, setHasMore] = useState(false);
+    const [nextCursor, setNextCursor] = useState<number | null>(null);
+    const [isLoadingMore, setIsLoadingMore] = useState(false);
+    const isInitialLoadRef = useRef(true);
 
     const isRtl = i18n.language === "fa";
 
@@ -92,7 +101,9 @@ const ChatDashboard = () => {
     };
 
     useEffect(() => {
-        scrollToBottom();
+        if (isInitialLoadRef.current) {
+            scrollToBottom();
+        }
     }, [messages]);
 
     // Fetch workspace details
@@ -138,17 +149,69 @@ const ChatDashboard = () => {
         }
     }, [currentUser, token]);
 
-    // Fetch chat history
+    // Fetch initial chat history with pagination
     useEffect(() => {
         if (selectedUser && token && currentUser) {
+            isInitialLoadRef.current = true;
+            setHasMore(false);
+            setNextCursor(null);
             axios.get(`${API_BASE_URL}/api/messages/${selectedUser.id}`, {
-                params: { current_user_id: currentUser.id }
+                params: { current_user_id: currentUser.id, limit: 30 }
             }).then(res => {
-                setMessages(res.data);
+                const data = res.data;
+                if (data && Array.isArray(data.messages)) {
+                    setMessages(data.messages);
+                    setHasMore(data.has_more);
+                    setNextCursor(data.next_cursor);
+                } else if (Array.isArray(data)) {
+                    setMessages(data);
+                    setHasMore(false);
+                    setNextCursor(null);
+                }
                 sendRead(selectedUser.id);
+                setTimeout(() => {
+                    scrollToBottom();
+                    isInitialLoadRef.current = false;
+                }, 50);
             }).catch(err => console.error("Error fetching messages:", err));
         }
     }, [selectedUser, currentUser]);
+
+    // Infinite scroll upward handler to load older messages
+    const handleScroll = () => {
+        const container = messagesContainerRef.current;
+        if (!container || isLoadingMore || !hasMore || !nextCursor || !selectedUser || !currentUser) return;
+
+        if (container.scrollTop < 60) {
+            setIsLoadingMore(true);
+            const prevScrollHeight = container.scrollHeight;
+
+            axios.get(`${API_BASE_URL}/api/messages/${selectedUser.id}`, {
+                params: {
+                    current_user_id: currentUser.id,
+                    before_id: nextCursor,
+                    limit: 30
+                }
+            }).then(res => {
+                const data = res.data;
+                if (data && Array.isArray(data.messages)) {
+                    prependMessages(data.messages);
+                    setHasMore(data.has_more);
+                    setNextCursor(data.next_cursor);
+
+                    requestAnimationFrame(() => {
+                        if (container) {
+                            container.scrollTop = container.scrollHeight - prevScrollHeight;
+                        }
+                    });
+                }
+            }).catch(err => {
+                console.error("Error fetching older messages:", err);
+            }).finally(() => {
+                setIsLoadingMore(false);
+            });
+        }
+    };
 
     // Mark incoming messages as read
     useEffect(() => {
@@ -835,8 +898,24 @@ const ChatDashboard = () => {
                             </button>
                         </div>
 
+                        {/* Rate Limit Banner */}
+                        {rateLimitError && (
+                            <div className="bg-red-500 text-white text-xs px-4 py-2 text-center font-bold shadow-md transition-all animate-pulse">
+                                ⚠️ {rateLimitError}
+                            </div>
+                        )}
+
                         {/* Messages List */}
-                        <div className="flex-1 p-5 overflow-y-auto bg-gray-50 space-y-4">
+                        <div
+                            ref={messagesContainerRef}
+                            onScroll={handleScroll}
+                            className="flex-1 p-5 overflow-y-auto bg-gray-50 space-y-4"
+                        >
+                            {isLoadingMore && (
+                                <div className="text-center py-2 text-xs text-blue-600 font-medium animate-pulse">
+                                    {t('loading_older_messages') || 'در حال دریافت پیام‌های قدیمی‌تر...'}
+                                </div>
+                            )}
                             {messages.map((msg, idx) => {
                                 const isMe = msg.sender_id === currentUser?.id;
                                 const contentDir = msg.message_type === "text" ? getMessageDir(msg.content) : (isRtl ? "rtl" : "ltr");
