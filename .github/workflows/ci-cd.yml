@@ -1,0 +1,135 @@
+name: Goftyar CI/CD Pipeline
+
+on:
+  push:
+    branches: [ "main", "master" ]
+  pull_request:
+    branches: [ "main", "master" ]
+
+permissions:
+  contents: read
+  packages: write
+
+jobs:
+  backend-test:
+    name: Backend Lint & Test
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Checkout Code
+        uses: actions/checkout@v4
+
+      - name: Set up Python 3.12
+        uses: actions/setup-python@v5
+        with:
+          python-version: '3.12'
+          cache: 'pip'
+
+      - name: Install Dependencies
+        run: |
+          python -m pip install --upgrade pip
+          pip install -r requirements.txt
+          pip install pytest pytest-asyncio httpx
+
+      - name: Run Pytest Test Suite
+        run: |
+          pytest -v
+
+  frontend-test-and-build:
+    name: Frontend Test & Build
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Checkout Code
+        uses: actions/checkout@v4
+
+      - name: Set up Node.js 22
+        uses: actions/setup-node@v4
+        with:
+          node-version: '22'
+          cache: 'npm'
+          cache-dependency-path: goftyar-client/package-lock.json
+
+      - name: Install Frontend Dependencies
+        run: |
+          cd goftyar-client
+          npm ci
+
+      - name: Build Frontend Application
+        run: |
+          cd goftyar-client
+          npm run build
+
+  docker-build-and-push:
+    name: Build & Push Docker Images to GHCR
+    needs: [backend-test, frontend-test-and-build]
+    if: github.event_name == 'push' && (github.ref == 'refs/heads/main' || github.ref == 'refs/heads/master')
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Checkout Code
+        uses: actions/checkout@v4
+
+      - name: Set up Docker Buildx
+        uses: docker/setup-buildx-action@v3
+
+      - name: Log in to GitHub Container Registry
+        uses: docker/login-action@v3
+        with:
+          registry: ghcr.io
+          username: ${{ github.actor }}
+          password: ${{ secrets.GITHUB_TOKEN }}
+
+      - name: Lowercase Repository Name
+        id: repo_name
+        run: |
+          echo "IMAGE_PREFIX=ghcr.io/${{ github.repository_owner }}" | tr '[:upper:]' '[:lower:]' >> $GITHUB_ENV
+
+      - name: Build and Push Backend Image
+        uses: docker/build-push-action@v6
+        with:
+          context: .
+          file: ./Dockerfile
+          push: true
+          tags: |
+            ${{ env.IMAGE_PREFIX }}/goftyar-backend:latest
+            ${{ env.IMAGE_PREFIX }}/goftyar-backend:${{ github.sha }}
+          cache-from: type=gha
+          cache-to: type=gha,mode=max
+
+      - name: Build and Push Frontend Image
+        uses: docker/build-push-action@v6
+        with:
+          context: ./goftyar-client
+          file: ./goftyar-client/Dockerfile
+          push: true
+          tags: |
+            ${{ env.IMAGE_PREFIX }}/goftyar-frontend:latest
+            ${{ env.IMAGE_PREFIX }}/goftyar-frontend:${{ github.sha }}
+          cache-from: type=gha
+          cache-to: type=gha,mode=max
+
+  deploy-ubuntu-server:
+    name: Deploy to Ubuntu Production Server
+    needs: docker-build-and-push
+    if: github.event_name == 'push' && (github.ref == 'refs/heads/main' || github.ref == 'refs/heads/master')
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Checkout Code
+        uses: actions/checkout@v4
+
+      - name: Deploy via SSH to Ubuntu Server
+        uses: appleboy/ssh-action@v1.0.3
+        if: ${{ secrets.SSH_HOST != '' }}
+        with:
+          host: ${{ secrets.SSH_HOST }}
+          username: ${{ secrets.SSH_USER }}
+          key: ${{ secrets.SSH_PRIVATE_KEY }}
+          port: ${{ secrets.SSH_PORT || 22 }}
+          script: |
+            cd /opt/goftyar || exit 1
+            echo "${{ secrets.GITHUB_TOKEN }}" | docker login ghcr.io -u ${{ github.actor }} --password-stdin
+            docker compose -f docker-compose.yml -f docker-compose.prod.yml pull
+            docker compose -f docker-compose.yml -f docker-compose.prod.yml up -d --remove-orphans
+            docker image prune -f

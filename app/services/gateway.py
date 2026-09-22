@@ -90,6 +90,10 @@ async def proxy_http_request(target_base_url: str, request: Request) -> Response
             )
 
 
+@app.get("/health")
+async def health_check():
+    return {"status": "ok", "service": "gateway"}
+
 # Route REST endpoints
 @app.api_route("/api/auth/{path:path}", methods=["GET", "POST", "PUT", "DELETE", "PATCH"])
 async def route_auth(request: Request, path: str):
