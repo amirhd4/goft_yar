@@ -14,16 +14,20 @@ from app.auth import SECRET_KEY, ALGORITHM
 from app.connection_manager import manager
 from app.database import AsyncSessionLocal, get_db
 from app.models import Message
-from app.schemas import MessageSchema
+from typing import Optional
+from app.schemas import MessageSchema, PaginatedMessagesResponse
+from app.rate_limiter import ws_rate_limiter
 
 
 router = APIRouter(tags=["Chat"])
 
 
-@router.get("/api/messages/{other_user_id}", response_model=List[MessageSchema])
+@router.get("/api/messages/{other_user_id}", response_model=PaginatedMessagesResponse)
 async def get_chat_history(
         other_user_id: int,
         current_user_id: int = Query(...),
+        before_id: Optional[int] = Query(None, description="Cursor for pagination (message ID)"),
+        limit: int = Query(30, ge=1, le=100, description="Number of messages to fetch"),
         db: AsyncSession = Depends(get_db)
 ):
     # Mark messages sent from other_user_id to current_user_id as read
@@ -40,15 +44,36 @@ async def get_chat_history(
     except Exception as e:
         print(f"Error marking messages as read: {e}")
 
-    stmt = select(Message).where(
+    conditions = [
         or_(
             and_(Message.sender_id == current_user_id, Message.receiver_id == other_user_id),
             and_(Message.sender_id == other_user_id, Message.receiver_id == current_user_id)
         )
-    ).order_by(Message.timestamp.asc())
+    ]
+    if before_id is not None:
+        conditions.append(Message.id < before_id)
+
+    stmt = select(Message).where(and_(*conditions)).order_by(Message.id.desc()).limit(limit + 1)
 
     result = await db.execute(stmt)
-    return result.scalars().all()
+    raw_messages = list(result.scalars().all())
+
+    has_more = len(raw_messages) > limit
+    if has_more:
+        messages = raw_messages[:limit]
+    else:
+        messages = raw_messages
+
+    # Reverse to return in ascending chronological order
+    messages.reverse()
+
+    next_cursor = messages[0].id if (messages and has_more) else None
+
+    return {
+        "messages": messages,
+        "has_more": has_more,
+        "next_cursor": next_cursor
+    }
 
 
 @router.websocket("/ws/chat")
@@ -181,6 +206,17 @@ async def websocket_chat(websocket: WebSocket, token: str = Query(...)):
             content = message_json["content"]
             message_format = message_json.get("msgType") or message_json.get("message_type") or "text"
             client_msg_id = message_json.get("client_msg_id")
+
+            # Enforce Anti-Bot & Anti-Spam Rate Limiting
+            is_allowed, reason = ws_rate_limiter.check_rate_limit(user_id, content)
+            if not is_allowed:
+                await manager.send_personal_message({
+                    "type": "error",
+                    "code": "RATE_LIMIT_EXCEEDED",
+                    "message": reason,
+                    "client_msg_id": client_msg_id
+                }, websocket)
+                continue
 
             async with AsyncSessionLocal() as db:
                 db_message = None

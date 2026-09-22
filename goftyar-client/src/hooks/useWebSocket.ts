@@ -81,6 +81,10 @@ export const useWebSocket = () => {
         setMessages(updated);
       } else if (data.type === 'message') {
         addMessage(data);
+      } else if (data.type === 'error') {
+        const setRateLimitError = useChatStore.getState().setRateLimitError;
+        setRateLimitError(data.message || 'Error occurred');
+        setTimeout(() => setRateLimitError(null), 4000);
       } else if (['call_user', 'answer_call', 'ice_candidate', 'hangup'].includes(data.type)) {
         // Handle Call events
         if (data.type === 'call_user') {

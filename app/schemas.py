@@ -66,6 +66,12 @@ class MessageSchema(BaseModel):
         from_attributes = True
 
 
+class PaginatedMessagesResponse(BaseModel):
+    messages: List[MessageSchema]
+    has_more: bool
+    next_cursor: Optional[int] = None
+
+
 class WidgetCreate(BaseModel):
     name: str
     theme_color: Optional[str] = "#2563eb"

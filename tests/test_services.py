@@ -180,3 +180,91 @@ async def test_gateway_rate_limiting():
     responses = [client.get("/static/demo.html") for _ in range(5)]
     for r in responses:
         assert r.status_code in [200, 404]
+
+
+@pytest.mark.asyncio
+async def test_message_rate_limiter_anti_bot():
+    from app.rate_limiter import MessageRateLimiter
+
+    limiter = MessageRateLimiter(capacity=3, refill_rate=1.0, duplicate_limit=2, duplicate_window=5.0)
+    user_id = 999
+
+    # 1. Normal allowed messages
+    ok, err = limiter.check_rate_limit(user_id, "hello 1")
+    assert ok is True
+    ok, err = limiter.check_rate_limit(user_id, "hello 2")
+    assert ok is True
+    ok, err = limiter.check_rate_limit(user_id, "hello 3")
+    assert ok is True
+
+    # 4th message exceeds capacity (capacity=3)
+    ok, err = limiter.check_rate_limit(user_id, "hello 4")
+    assert ok is False
+    assert "تعداد پیام‌های شما زیاد است" in err
+
+    # 2. Test duplicate detection
+    limiter_dup = MessageRateLimiter(capacity=10, refill_rate=1.0, duplicate_limit=2, duplicate_window=5.0)
+    ok1, _ = limiter_dup.check_rate_limit(user_id, "same text")
+    assert ok1 is True
+    ok2, _ = limiter_dup.check_rate_limit(user_id, "same text")
+    assert ok2 is True
+    # 3rd identical message within window should be caught as spam
+    ok3, err3 = limiter_dup.check_rate_limit(user_id, "same text")
+    assert ok3 is False
+    assert "تکراری" in err3
+
+
+@pytest.mark.asyncio
+async def test_cursor_pagination_messages_endpoint():
+    from app.models import Message
+    from app.database import AsyncSessionLocal
+
+    async with AsyncClient(transport=ASGITransport(app=main_app), base_url="http://test") as client:
+        # Register users
+        await client.post("/api/auth/register", json={"username": "userA", "password": "password"})
+        await client.post("/api/auth/register", json={"username": "userB", "password": "password"})
+
+        # Populate 10 messages between user 1 and user 2 in DB
+        async with AsyncSessionLocal() as db:
+            for i in range(1, 11):
+                msg = Message(
+                    sender_id=1,
+                    receiver_id=2,
+                    content=f"Message {i}",
+                    message_type="text",
+                    is_delivered=True,
+                    is_read=True
+                )
+                db.add(msg)
+            await db.commit()
+
+        # Fetch first page with limit=4
+        res1 = await client.get("/api/messages/2?current_user_id=1&limit=4")
+        assert res1.status_code == 200
+        data1 = res1.json()
+        assert len(data1["messages"]) == 4
+        assert data1["has_more"] is True
+        assert data1["next_cursor"] is not None
+        assert data1["messages"][0]["content"] == "Message 7"
+        assert data1["messages"][-1]["content"] == "Message 10"
+
+        # Fetch second page using next_cursor
+        cursor1 = data1["next_cursor"]
+        res2 = await client.get(f"/api/messages/2?current_user_id=1&before_id={cursor1}&limit=4")
+        assert res2.status_code == 200
+        data2 = res2.json()
+        assert len(data2["messages"]) == 4
+        assert data2["has_more"] is True
+        assert data2["messages"][0]["content"] == "Message 3"
+        assert data2["messages"][-1]["content"] == "Message 6"
+
+        # Fetch third page using next_cursor
+        cursor2 = data2["next_cursor"]
+        res3 = await client.get(f"/api/messages/2?current_user_id=1&before_id={cursor2}&limit=4")
+        assert res3.status_code == 200
+        data3 = res3.json()
+        assert len(data3["messages"]) == 2
+        assert data3["has_more"] is False
+        assert data3["next_cursor"] is None
+        assert data3["messages"][0]["content"] == "Message 1"
+        assert data3["messages"][1]["content"] == "Message 2"

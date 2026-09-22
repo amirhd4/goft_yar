@@ -26,6 +26,7 @@ interface ChatState {
   messages: Message[];
   onlineUsers: number[];
   typingUsers: Record<number, boolean>;
+  rateLimitError: string | null;
   
   // WebRTC Calling State
   callState: 'idle' | 'calling' | 'incoming' | 'connected';
@@ -36,7 +37,9 @@ interface ChatState {
   setCurrentUser: (user: User | null) => void;
   setSelectedUser: (user: User | null) => void;
   setMessages: (messages: Message[]) => void;
+  prependMessages: (messages: Message[]) => void;
   addMessage: (message: Message) => void;
+  setRateLimitError: (error: string | null) => void;
   setOnlineUsers: (users: number[]) => void;
   setTypingUser: (userId: number, isTyping: boolean) => void;
   logout: () => void;
@@ -81,6 +84,13 @@ export const useChatStore = create<ChatState>((set) => ({
   setSelectedUser: (user) => set({ selectedUser: user }),
   
   setMessages: (messages) => set({ messages }),
+
+  prependMessages: (olderMessages) => set((state) => {
+    // Filter out messages that already exist by id or client_msg_id
+    const existingIds = new Set(state.messages.map(m => m.id).filter(Boolean));
+    const filteredOlder = olderMessages.filter(m => !m.id || !existingIds.has(m.id));
+    return { messages: [...filteredOlder, ...state.messages] };
+  }),
   
   addMessage: (message) => set((state) => {
     // Prevent duplicate messages by checking client_msg_id or ID
@@ -101,6 +111,8 @@ export const useChatStore = create<ChatState>((set) => ({
     return { messages: [...state.messages, message] };
   }),
 
+  rateLimitError: null,
+  setRateLimitError: (error) => set({ rateLimitError: error }),
   setOnlineUsers: (users) => set({ onlineUsers: users }),
 
   setTypingUser: (userId, isTyping) => set((state) => ({

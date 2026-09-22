@@ -110,6 +110,9 @@
     <!-- Main Widget Container -->
     <div class="flex-1 flex flex-col h-full bg-white relative">
         
+        <!-- Rate Limit Banner -->
+        <div id="rate-limit-banner" class="bg-red-500 text-white text-xs px-3 py-1.5 text-center font-bold shadow-md hidden animate-pulse z-20"></div>
+
         <!-- Header -->
         <div id="widget-header" class="bg-primary-600 text-white p-4 shadow-md flex items-center justify-between z-10">
             <div class="flex items-center gap-3">
@@ -235,6 +238,11 @@
         let rtcConnection = null;
         let pendingOffer = null;
 
+        // Pagination States
+        let hasMoreMessages = false;
+        let nextMessageCursor = null;
+        let isLoadingOlderMessages = false;
+
         const messagesContainer = document.getElementById('messages-container');
         const typingIndicator = document.getElementById('typing-indicator');
 
@@ -319,17 +327,41 @@
             }
         }
 
-        // Load chat history
-        async function loadChatHistory() {
+        // Load chat history with cursor pagination
+        async function loadChatHistory(beforeId = null) {
             if (!targetOperator || !currentUser) return;
 
             try {
-                const res = await fetch(`${backendUrl}/api/messages/${targetOperator.id}?current_user_id=${currentUser.id}`);
-                const history = await res.json();
-                
-                messagesContainer.innerHTML = '';
-                history.forEach(appendMessage);
-                scrollToBottom();
+                let url = `${backendUrl}/api/messages/${targetOperator.id}?current_user_id=${currentUser.id}&limit=30`;
+                if (beforeId) {
+                    url += `&before_id=${beforeId}`;
+                }
+
+                const res = await fetch(url);
+                const data = await res.json();
+
+                let msgs = [];
+                if (data && Array.isArray(data.messages)) {
+                    msgs = data.messages;
+                    hasMoreMessages = data.has_more;
+                    nextMessageCursor = data.next_cursor;
+                } else if (Array.isArray(data)) {
+                    msgs = data;
+                    hasMoreMessages = false;
+                    nextMessageCursor = null;
+                }
+
+                if (!beforeId) {
+                    messagesContainer.innerHTML = '';
+                    msgs.forEach(appendMessage);
+                    scrollToBottom();
+                } else {
+                    const prevHeight = messagesContainer.scrollHeight;
+                    prependMessagesBatch(msgs);
+                    requestAnimationFrame(() => {
+                        messagesContainer.scrollTop = messagesContainer.scrollHeight - prevHeight;
+                    });
+                }
 
                 // Send read receipt
                 sendRead(targetOperator.id);
@@ -337,6 +369,24 @@
                 console.error("Error loading chat history:", err);
             }
         }
+
+        function prependMessagesBatch(msgs) {
+            const fragment = document.createDocumentFragment();
+            msgs.forEach(msg => {
+                const elem = createMessageElement(msg);
+                fragment.appendChild(elem);
+            });
+            messagesContainer.insertBefore(fragment, messagesContainer.firstChild);
+        }
+
+        // Infinite scroll listener for older messages
+        messagesContainer.addEventListener('scroll', async () => {
+            if (messagesContainer.scrollTop < 40 && hasMoreMessages && nextMessageCursor && !isLoadingOlderMessages) {
+                isLoadingOlderMessages = true;
+                await loadChatHistory(nextMessageCursor);
+                isLoadingOlderMessages = false;
+            }
+        });
 
         // Connect WebSocket
         function connectWebSocket() {
@@ -362,6 +412,11 @@
                 const data = JSON.parse(event.data);
 
                 if (data.type === "pong") return;
+
+                if (data.type === "error") {
+                    showRateLimitError(data.message || "خطا در ارسال پیام");
+                    return;
+                }
 
                 if (data.type === "presence_list") {
                     const online = data.online_users.includes(targetOperator?.id);
@@ -423,6 +478,17 @@
                 updatePresence(false);
                 setTimeout(connectWebSocket, 3000);
             };
+        }
+
+        function showRateLimitError(msg) {
+            const banner = document.getElementById('rate-limit-banner');
+            if (banner) {
+                banner.innerText = "⚠️ " + msg;
+                banner.classList.remove('hidden');
+                setTimeout(() => {
+                    banner.classList.add('hidden');
+                }, 4000);
+            }
         }
 
         function updatePresence(isOnline) {
@@ -529,8 +595,8 @@
             }
         }
 
-        // Append message to DOM
-        function appendMessage(msg) {
+        // Helper to construct message DOM element
+        function createMessageElement(msg) {
             const isMe = msg.sender_id === currentUser?.id;
             const msgRow = document.createElement('div');
             msgRow.className = `flex w-full ${isMe ? 'justify-end' : 'justify-start'}`;
@@ -546,7 +612,6 @@
                 bubble.style.backgroundColor = customColor;
             }
 
-            // Render content by message type
             if (msg.message_type === "image") {
                 const img = document.createElement('img');
                 img.src = `${backendUrl}${msg.content}`;
@@ -571,7 +636,6 @@
                 bubble.appendChild(span);
             }
 
-            // Time and Ticks
             const meta = document.createElement('div');
             meta.className = `flex items-center justify-end gap-1 mt-1 text-[10px] ${isMe ? 'text-white/80' : 'text-gray-400'}`;
             
@@ -596,6 +660,12 @@
 
             bubble.appendChild(meta);
             msgRow.appendChild(bubble);
+            return msgRow;
+        }
+
+        // Append message to DOM
+        function appendMessage(msg) {
+            const msgRow = createMessageElement(msg);
             messagesContainer.appendChild(msgRow);
         }
 
