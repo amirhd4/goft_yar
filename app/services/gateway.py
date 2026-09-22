@@ -11,7 +11,10 @@ AUTH_SERVICE_URL = os.getenv("AUTH_SERVICE_URL", "http://localhost:8001")
 WIDGET_SERVICE_URL = os.getenv("WIDGET_SERVICE_URL", "http://localhost:8002")
 CHAT_SERVICE_URL = os.getenv("CHAT_SERVICE_URL", "http://localhost:8003")
 
+from app.logging_config import setup_observability
+
 app = FastAPI(title="Goftyar API Gateway", version="1.0.0")
+setup_observability(app, service_name="gateway")
 
 app.add_middleware(
     CORSMiddleware,

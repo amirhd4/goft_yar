@@ -1,8 +1,10 @@
 from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
 from app.routers import widget_router
+from app.logging_config import setup_observability
 
 app = FastAPI(title="Goftyar Widget Service", version="1.0.0")
+setup_observability(app, service_name="widget-service")
 
 app.add_middleware(
     CORSMiddleware,

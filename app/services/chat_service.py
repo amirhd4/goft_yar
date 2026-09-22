@@ -6,6 +6,7 @@ from fastapi.middleware.cors import CORSMiddleware
 from fastapi.staticfiles import StaticFiles
 from app.routers import chat_router
 from app.connection_manager import manager
+from app.logging_config import setup_observability
 
 
 @asynccontextmanager
@@ -19,6 +20,7 @@ async def lifespan(app: FastAPI):
 
 
 app = FastAPI(title="Goftyar Chat & Presence Service", version="1.0.0")
+setup_observability(app, service_name="chat-service")
 
 app.add_middleware(
     CORSMiddleware,

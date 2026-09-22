@@ -4,6 +4,7 @@ from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
 from app.database import engine, Base
 from app.routers import auth_router
+from app.logging_config import setup_observability
 
 
 @asynccontextmanager
@@ -14,6 +15,7 @@ async def lifespan(app: FastAPI):
 
 
 app = FastAPI(title="Goftyar Auth Service", version="1.0.0")
+setup_observability(app, service_name="auth-service")
 
 app.add_middleware(
     CORSMiddleware,
