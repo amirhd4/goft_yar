@@ -59,7 +59,8 @@ const resources = {
       "cancel": "Cancel",
       "edit": "Edit",
       "delete": "Delete",
-      "no_widgets": "No widgets found."
+      "no_widgets": "No widgets found.",
+      "loading_older_messages": "Loading older messages...",
     }
   },
   fa: {
@@ -119,7 +120,8 @@ const resources = {
       "cancel": "لغو",
       "edit": "ویرایش",
       "delete": "حذف",
-      "no_widgets": "هیچ ویجتی یافت نشد."
+      "no_widgets": "هیچ ویجتی یافت نشد.",
+      "loading_older_messages": "درحال بارگذاری پیام های قدیمی تر..."
     }
   }
 }
